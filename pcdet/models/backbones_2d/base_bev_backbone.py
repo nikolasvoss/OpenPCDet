@@ -23,6 +23,10 @@ class BaseBEVBackbone(nn.Module):
         else:
             upsample_strides = num_upsample_filters = []
 
+        if model_cfg.get('WIDTH', None):
+            num_filters = (np.array(num_filters, dtype=np.int32) * model_cfg.WIDTH).astype(int)
+            num_upsample_filters = (np.array(num_upsample_filters, dtype=np.int32) * model_cfg.WIDTH).astype(int)
+
         num_levels = len(layer_nums)
         c_in_list = [input_channels, *num_filters[:-1]]
         self.blocks = nn.ModuleList()
