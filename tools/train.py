@@ -20,10 +20,10 @@ from train_utils.train_utils import train_model
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default=None, help='specify the config for training')
+    parser.add_argument('--cfg_file', type=str, default='/home/niko/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_second_multihead.yaml', help='specify the config for training')
 
-    parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
-    parser.add_argument('--epochs', type=int, default=None, required=False, help='number of epochs to train for')
+    parser.add_argument('--batch_size', type=int, default=8, required=False, help='batch size for training')
+    parser.add_argument('--epochs', type=int, default=15, required=False, help='number of epochs to train for')
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
@@ -48,7 +48,7 @@ def parse_config():
     parser.add_argument('--logger_iter_interval', type=int, default=50, help='')
     parser.add_argument('--ckpt_save_time_interval', type=int, default=300, help='in terms of seconds')
     parser.add_argument('--wo_gpu_stat', action='store_true', help='')
-    parser.add_argument('--use_amp', action='store_true', help='use mix precision training')
+    parser.add_argument('--use_amp', default=False, action='store_true', help='use mix precision training')
     
 
     args = parser.parse_args()
