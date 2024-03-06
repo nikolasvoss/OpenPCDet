@@ -68,7 +68,7 @@ class SparseBasicBlock(spconv.SparseModule):
         return out
 
 
-# this class is copied from SparseKD
+# this class is copied partly from SparseKD
 class VoxelBackBone8x(nn.Module):
     def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
         super().__init__()
@@ -82,8 +82,9 @@ class VoxelBackBone8x(nn.Module):
         else:
             num_filters = [16, 16, 32, 64, 64, 128]
 
-        if model_cfg.get('WIDTH', None):
-            num_filters = (np.array(num_filters, dtype=np.int32) * model_cfg.WIDTH).astype(int)
+        #if model_cfg.get('WIDTH', None):
+            #num_filters = (np.array(num_filters, dtype=np.int32) * model_cfg.WIDTH).astype(int)
+        num_filters = (np.array(num_filters, dtype=np.int32) * 0.75).astype(int)
 
         if model_cfg.get('LAYER_NUMS', None):
             layer_nums = model_cfg.LAYER_NUMS
