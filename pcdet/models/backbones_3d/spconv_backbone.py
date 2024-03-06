@@ -7,7 +7,7 @@ from ...utils.spconv_utils import replace_feature, spconv
 
 
 def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stride=1, padding=0,
-                   conv_type='subm', norm_fn=None):
+                   conv_type='subm', norm_fn=None, act_fn=nn.ReLU):
 
     if conv_type == 'subm':
         conv = spconv.SubMConv3d(in_channels, out_channels, kernel_size, bias=False, indice_key=indice_key)
@@ -22,7 +22,7 @@ def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stri
     m = spconv.SparseSequential(
         conv,
         norm_fn(out_channels),
-        nn.ReLU(),
+        act_fn(),
     )
 
     return m
