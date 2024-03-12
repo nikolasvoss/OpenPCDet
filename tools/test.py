@@ -20,7 +20,7 @@ from pcdet.utils import common_utils
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default=None, help='specify the config for training')
+    parser.add_argument('--cfg_file', type=str, default='/home/niko/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_second_multihead.yaml', help='specify the config for training')
 
     parser.add_argument('--batch_size', type=int, default=None, required=False, help='batch size for training')
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
@@ -55,10 +55,14 @@ def parse_config():
     return args, cfg
 
 
-def eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=False):
+def eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=False, ckpt_path=None):
     # load checkpoint
-    model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=dist_test, 
-                                pre_trained_path=args.pretrained_model)
+    if ckpt_path is None:
+        model.load_params_from_file(filename=args.ckpt, logger=logger, to_cpu=dist_test,
+                                    pre_trained_path=args.pretrained_model)
+    else:
+        model.load_params_from_file(filename=ckpt_path, logger=logger, to_cpu=dist_test,
+                                    pre_trained_path=args.pretrained_model)
     model.cuda()
     
     # start evaluation
