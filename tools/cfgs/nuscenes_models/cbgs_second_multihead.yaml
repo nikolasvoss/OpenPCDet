@@ -13,6 +13,7 @@ MODEL:
 
     BACKBONE_3D:
         NAME: VoxelResBackBone8x
+        WIDTH: 1.0
 
     MAP_TO_BEV:
         NAME: HeightCompression
@@ -20,6 +21,7 @@ MODEL:
 
     BACKBONE_2D:
         NAME: BaseBEVBackbone
+        WIDTH: 1.0
 
         LAYER_NUMS: [5, 5]
         LAYER_STRIDES: [1, 2]
