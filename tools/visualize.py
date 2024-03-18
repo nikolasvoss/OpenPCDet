@@ -9,11 +9,10 @@ from pathlib import Path
 
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import Normalize
 import torch
 from tensorboardX import SummaryWriter
 
-# from visual_utils.vis_feature_maps import register_hook_for_layer, visualize_feature_map
+import visual_utils.vis_feature_maps as vis
 from pcdet.config import cfg, cfg_from_list, cfg_from_yaml_file, log_config_to_file
 from pcdet.datasets import build_dataloader
 from pcdet.models import build_network, load_data_to_gpu
@@ -54,37 +53,6 @@ def parse_config():
         cfg_from_list(args.set_cfgs, cfg)
 
     return args, cfg
-
-def extract_feature_map_hook(module, input, output):
-    """Extracts the output of the layer for visualization."""
-    global feature_maps
-    feature_maps = output
-
-def register_hook_for_layer(model, layer_name):
-    """Registers a hook for the specified layer in the model."""
-    for name, module in model.named_modules():
-        if name == layer_name:
-            # Register a forward hook on the layer to capture feature maps
-            module.register_forward_hook(extract_feature_map_hook)
-
-def visualize_feature_map(feature_map, output_dir, unknown_idx, fmap_idx=None, z_plane=None):
-    """Visualizes a slice of one feature map using Matplotlib."""
-    visibility_factor = 4 # multiply all values for better visibility
-
-    if feature_map is not None:
-        feature_map = feature_map.dense()
-        plt.figure(figsize=(8, 8)) # Set the figure size to be 8x8 inches
-        # Detach the feature map from GPU and convert to NumPy
-        for fmap_idx in range(len(feature_map[unknown_idx])):
-            for z_plane in range(len(feature_map[unknown_idx][fmap_idx])):
-                feature_slice = feature_map[unknown_idx][fmap_idx][z_plane].cpu().detach().numpy()
-                plt.imshow(feature_slice*visibility_factor, cmap='PRGn', vmax=1, vmin=-1)
-                plt.colorbar()
-                file_name = os.path.join(output_dir, (f'map_{unknown_idx}_fmap{fmap_idx}_z{z_plane}.jpg'))
-                plt.savefig(os.path.join(output_dir, file_name), dpi=150) # > 1024x1024 pixels (8 inches * 128 DPI)
-                plt.clf()
-    else:
-        print("No feature map available. Check if the hook was triggered correctly.")
 
 def main():
     args, cfg = parse_config()
@@ -139,14 +107,14 @@ def main():
     model.eval()
 
     layer_name = "backbone_3d.conv1.0.conv1"  # Replace with the layer you want to visualize
-    unknown_idx = 0  # TODO: what is this?
+    batch_idx = 0
     fmap_idx = 4  # Index of the feature map to visualize
-    z_plane_idx = None  # Index of the z-plane to visualize from the 3D feature map
-    output_dir = f'/home/nvoss/OpenPCDet/feature_map_saves/{layer_name}/'
+    z_plane_idx = 25  # Index of the z-plane to visualize from the 3D feature map
+    output_dir = f'/home/niko/OpenPCDet/feature_map_saves/{layer_name}/'
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
     
-    register_hook_for_layer(model, layer_name)
+    vis.registerHookForLayer(model, layer_name)
 
     input_dict = next(iter(test_loader))
     
@@ -158,8 +126,8 @@ def main():
         pred_dicts, ret_dict = model.forward(input_dict)
 
     # Visualize the feature map
-    visualize_feature_map(feature_maps, output_dir, unknown_idx, fmap_idx, z_plane_idx)
-
+    #vis.visualizeFeatureMap(vis.feature_maps, output_dir, batch_idx, fmap_idx, z_plane_idx)
+    vis.visualizeFeatureMap3D(vis.feature_maps, output_dir, batch_idx, fmap_idx)
 
 if __name__ == '__main__':
     main()
