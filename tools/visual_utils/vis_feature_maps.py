@@ -114,7 +114,7 @@ def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_idx=None, z_p
             plt.savefig(os.path.join(output_dir, file_name), dpi=150) # > 1024x1024 pixels (8 inches * 128 DPI)
             plt.close()
 
-def visualizeFeatureMap3D(feature_map, output_dir, batch_idx=0, fmap_idx=None):
+def visualizeFeatureMap3d(feature_map, output_dir, batch_idx=0, fmap_idx=None, input_points=None, same_plot=False):
     """Visualizes 3D feature maps using matplotlib.
 
     Args:
@@ -131,8 +131,8 @@ def visualizeFeatureMap3D(feature_map, output_dir, batch_idx=0, fmap_idx=None):
     if not os.path.exists(output_dir):
         raise FileNotFoundError(f"Output directory `{output_dir}` does not exist.")
 
+    # File operations
     feature_map = feature_map.dense().detach()
-
     num_feature_maps = feature_map.shape[1]
 
     # Check if fmap_idx is provided as a list, if not and it is not None, make it a list
@@ -152,28 +152,51 @@ def visualizeFeatureMap3D(feature_map, output_dir, batch_idx=0, fmap_idx=None):
 
     plt.style.use('default')
 
+    if input_points is not None:
+        input_points = input_points[:, 1:4]  # Only use the xyz coordinates
+        if same_plot:
+            fig = plt.figure(figsize=(11, 11))
+            ax_feature = fig.add_subplot(111, projection='3d')
+        else:
+            fig = plt.figure(figsize=(22, 11))
+            ax_feature = fig.add_subplot(121, projection='3d')
+
+        # ax_input is added later if same_plot is False
+        plt.subplots_adjust(left=0.0, right=0.95, bottom=0.0, top=1.0, wspace=0.0, hspace=0.4)
+    else:
+        fig = plt.figure(figsize=(11, 11))
+        ax_feature = fig.add_subplot(111, projection='3d')
+
     for fmap_idx in fmap_indices:
         # one plot for each feature map
-        fig = plt.figure(figsize=(11, 11))  # Set the figure size to be 8x8 inches
-        ax = fig.add_subplot(111, projection='3d')
-        ax.w_xaxis.pane.fill = False
-        ax.w_yaxis.pane.fill = False
-        ax.w_zaxis.pane.fill = False
+
+        ax_feature.w_xaxis.pane.fill = False
+        ax_feature.w_yaxis.pane.fill = False
+        ax_feature.w_zaxis.pane.fill = False
+        # Set labels and title
+        ax_feature.set_xlabel('X axis')
+        ax_feature.set_ylabel('Y axis')
+        ax_feature.set_zlabel('Z axis')
+        ax_feature.set_title(f'3D Feature Map - Batch: {batch_idx}, Feature Map: {fmap_idx}')
 
         single_feature_map = feature_map[batch_idx, fmap_idx] # values[z,y,x]
         z, y, x = torch.nonzero(single_feature_map, as_tuple=True)
+        x_meters = x.cpu().numpy() * 0.1 - 51.2  # voxel size and pc range
+        y_meters = y.cpu().numpy() * 0.1 - 51.2
+        z_meters = z.cpu().numpy() * 0.2 - 5.0
         nonzero_values = single_feature_map[z, y, x].cpu().numpy()
 
         # Plot using scatter to create a 3D voxel visualization
-        img = ax.scatter(x.cpu().numpy(),
-                         y.cpu().numpy(),
-                         z.cpu().numpy(),
+        img = ax_feature.scatter(x_meters,
+                         y_meters,
+                         z_meters,
                          c=abs(nonzero_values), # negative values are for loosers
                          cmap='copper',
-                         marker='.')
+                         s=1,
+                         vmax=5)
 
         # use when negative values should be visible
-        # img = ax.scatter(x.cpu().numpy(),
+        # img = ax_feature.scatter(x.cpu().numpy(),
         #                  y.cpu().numpy(),
         #                  z.cpu().numpy(),
         #                  c=nonzero_values,
@@ -182,14 +205,24 @@ def visualizeFeatureMap3D(feature_map, output_dir, batch_idx=0, fmap_idx=None):
         #                  vmax=1,
         #                  vmin=-1)
 
-        plt.colorbar(img, ax=ax)
+        # Input Points Visualization
+        if input_points is not None and same_plot:
+            x, y, z = input_points.cpu().numpy().T
+            ax_feature.scatter(x, y, z, c='green', s=1, label='Input Points')  # Plot input points in the same plot
+            ax_feature.legend()
 
-        # Set labels and title
-        ax.set_xlabel('X axis')
-        ax.set_ylabel('Y axis')
-        ax.set_zlabel('Z axis')
-        plt.title(f'3D Feature Map - Batch: {batch_idx}, Feature Map: {fmap_idx}')
-        plt.show()
+        plt.colorbar(img, shrink=0.2, aspect=10, ax=ax_feature)
+
+        if input_points is not None and not same_plot:
+            ax_input = fig.add_subplot(122, projection='3d')
+            x, y, z = input_points.cpu().numpy().T
+            ax_input.scatter(x, y, z, c='green', s=1)
+            ax_input.set_xlabel('X axis')
+            ax_input.set_ylabel('Y axis')
+            ax_input.set_zlabel('Z axis')
+            ax_input.set_title('Input Points')
+
+    plt.show()
 
         # Save the plot as an image
         # file_name = f'map3D_batch{batch_idx}_fmap{fmap_idx}.png'
