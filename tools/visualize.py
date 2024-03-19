@@ -10,9 +10,10 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
+import open3d as o3d
 from tensorboardX import SummaryWriter
 
-import visual_utils.vis_feature_maps as vis
+import visual_utils.vis_feature_maps as visfm
 from pcdet.config import cfg, cfg_from_list, cfg_from_yaml_file, log_config_to_file
 from pcdet.datasets import build_dataloader
 from pcdet.models import build_network, load_data_to_gpu
@@ -107,27 +108,37 @@ def main():
     model.eval()
 
     layer_name = "backbone_3d.conv1.0.conv1"  # Replace with the layer you want to visualize
+    num_samples = [200]  # Number of samples to visualize
     batch_idx = 0
-    fmap_idx = [5,6,7]  # Index of the feature map to visualize
+    fmap_idx = [6]  # Index of the feature map to visualize
     z_plane_idx = 25  # Index of the z-plane to visualize from the 3D feature map. Only used in 2d vis
     output_dir = f'/home/niko/OpenPCDet/feature_map_saves/{layer_name}/'
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
     
-    vis.registerHookForLayer(model, layer_name)
+    visfm.registerHookForLayer(model, layer_name)
 
-    input_dict = next(iter(test_loader))
-    
+    test_loader = iter(test_loader)
+    for i in num_samples:
+        input_dict = None
+        # iterate through the test loader until the sample is reached
+        for j in range(i):
+            input_dict = next(test_loader)
 
-    with torch.no_grad():
-        # Forward pass through the model
-        load_data_to_gpu(input_dict)
-        
-        pred_dicts, ret_dict = model.forward(input_dict)
+        with torch.no_grad():
+            # Forward pass through the model
+            load_data_to_gpu(input_dict)
 
-    # Visualize the feature map
-    #vis.visualizeFeatureMap(vis.feature_maps, output_dir, batch_idx, fmap_idx, z_plane_idx)
-    vis.visualizeFeatureMap3D(vis.feature_maps, output_dir, batch_idx, fmap_idx)
+            pred_dicts, ret_dict = model.forward(input_dict)
+            print(ret_dict)
+        # Visualize the feature map
+        #visfm.visualizeFeatureMap(visfm.feature_maps, output_dir, batch_idx, fmap_idx, z_plane_idx)
+        # visfm.visualizeFeatureMap3d(visfm.feature_maps, output_dir, batch_idx, fmap_idx, input_dict['points'],
+        #                              same_plot=True)
+        visfm.visualizeFeatureMap3dO3d(visfm.feature_maps, output_dir, batch_idx, fmap_idx, input_dict['points'],
+                                     same_plot=True,
+                                     gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
+                                     pred_boxes=pred_dicts[0]['pred_boxes'])
 
 if __name__ == '__main__':
     main()
