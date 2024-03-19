@@ -2,7 +2,7 @@ import os
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-#from mpl_toolkits.mplot3d import Axes3D
+import open3d as o3d
 
 global feature_maps
 
@@ -224,7 +224,161 @@ def visualizeFeatureMap3d(feature_map, output_dir, batch_idx=0, fmap_idx=None, i
 
     plt.show()
 
-        # Save the plot as an image
-        # file_name = f'map3D_batch{batch_idx}_fmap{fmap_idx}.png'
-        # plt.savefig(os.path.join(output_dir, file_name), dpi=150)
-        # plt.close(fig)
+def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_idx=None, input_points=None, same_plot=False, gt_boxes=None, pred_boxes=None):
+    """Visualizes 3D feature maps using matplotlib.
+
+    Args:
+    feature_map [batch_size, feature_maps, z, y, x]: The feature map tensor to visualize.
+    output_dir (str): The directory to save the visualization images.
+    batch_idx (int): The index of the batch to visualize. Default is 0.
+    fmap_idx (int): The index of the feature map to visualize. Default is None, which means all are being visualized.
+
+    Raises:
+    ValueError: If the feature_map is None or the output_dir does not exist.
+    """
+    if feature_map is None:
+        raise ValueError("No feature map available. Check if the hook was triggered correctly.")
+    if not os.path.exists(output_dir):
+        raise FileNotFoundError(f"Output directory `{output_dir}` does not exist.")
+
+    # File operations
+    feature_map = feature_map.dense().detach()
+    num_feature_maps = feature_map.shape[1]
+
+    # Check if fmap_idx is provided as a list, if not and it is not None, make it a list
+    if isinstance(fmap_idx, list):
+        fmap_indices = fmap_idx
+    elif fmap_idx is not None:
+        fmap_indices = [fmap_idx]
+    else:
+        fmap_indices = range(num_feature_maps)
+    # Check if passed indices are within bounds
+    for idx in fmap_indices:
+        if not (0 <= idx < num_feature_maps):
+            raise ValueError(f"fmap_idx {idx} is out of bounds. It must be between 0 and {num_feature_maps - 1}")
+
+    if batch_idx < 0 or batch_idx >= feature_map.shape[0]:
+        raise ValueError(f"batch_idx is out of bounds. It must be between 0 and {feature_map.shape[0] - 1}")
+
+    if input_points is not None:
+        input_points = input_points[:, 1:4]  # Only use the xyz coordinates
+
+    for fmap_idx in fmap_indices:
+        # one plot for each feature map
+
+        single_feature_map = feature_map[batch_idx, fmap_idx] # values[z,y,x]
+        z, y, x = torch.nonzero(single_feature_map, as_tuple=True)
+        # scale values for colors
+        nonzero_values = single_feature_map[z, y, x].cpu().numpy()
+        # create a tensor of size 3 x N with nonzero_values in the first row, the rest is 0
+        colors = np.zeros((3, len(nonzero_values)))
+        colors[0, :] = abs(nonzero_values)
+        colors = colors / colors.max() * 2 # values between 0 and 1
+        colors = np.clip(colors, 0, 1)  # Ensure values are within range [0, 1]
+        colors = colors.astype(np.float64)  # Convert to float64, as Open3D expects
+
+        x_meters = x.cpu().numpy() * 0.1 - 51.2  # voxel size and pc range
+        y_meters = y.cpu().numpy() * 0.1 - 51.2
+        z_meters = z.cpu().numpy() * 0.2 - 4.9
+
+        points = o3d.utility.Vector3dVector(np.vstack((x_meters, y_meters, z_meters)).T)
+        colors = o3d.utility.Vector3dVector(colors.T)
+
+        feature_pcd = o3d.geometry.PointCloud()
+        feature_pcd.points = points
+        feature_pcd.colors = colors
+
+        voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(feature_pcd, voxel_size=1)
+
+        # Create Open3d Visualizer:
+        vis = o3d.visualization.Visualizer()
+        vis.create_window()
+
+        vis.get_render_option().point_size = 2.5
+        vis.get_render_option().background_color = np.ones(3)
+
+        # Input Points Visualization
+        if input_points is not None and same_plot:
+            input_point_cloud = o3d.geometry.PointCloud()
+            input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
+            input_point_cloud.paint_uniform_color([0, 1, 0])  # green
+            # o3d.visualization.draw_geometries([voxel_grid, input_point_cloud],
+            # window_name=f'3D Feature Map and Input Points - Batch: {batch_idx}, Feature Map: {fmap_idx}')
+            vis.add_geometry(input_point_cloud)
+            vis.add_geometry(voxel_grid)
+
+            #test
+            if pred_boxes is not None:
+                vis, box3d_list = draw_box(vis, pred_boxes.cpu(), (1, 0, 0))
+                print('Number of Pred-Boxes: ', pred_boxes.shape[0])
+            if gt_boxes is not None:
+                gt_angles = gt_boxes[:, 6:8].reshape((-1, 2))
+                for i in range(gt_boxes.shape[0]):
+                    gt_box = gt_boxes[i, :].reshape((1, 9))
+                    vis, box3d_list = draw_box(vis, gt_box.cpu(), (0, 0, 1))
+                print('Number of GT-Boxes: ', gt_boxes.shape[0])
+        elif input_points is not None and not same_plot:
+            # o3d.visualization.draw_geometries([voxel_grid],
+            #                                   window_name=f'3D Feature Map - Batch: {batch_idx}, Feature Map: {fmap_idx}')
+            vis.add_geometry(voxel_grid)
+
+            input_point_cloud = o3d.geometry.PointCloud()
+            input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
+            input_point_cloud.paint_uniform_color([0, 1, 0])  # green
+            # o3d.visualization.draw_geometries([input_point_cloud],
+            #                                   window_name='Input Points')
+            vis.create_window()
+            vis.add_geometry(input_point_cloud)
+        else:  # no input points were passed
+            vis.add_geometry(voxel_grid)
+        vis.run()
+        vis.destroy_window()
+
+
+def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None):
+    box_colormap = [
+        [1, 1, 1],
+        [0, 1, 0],
+        [0, 1, 1],
+        [1, 1, 0],
+    ]
+    box3d_list = []
+
+    for i in range(gt_boxes.shape[0]):
+        line_set, box3d = translate_boxes_to_open3d_instance(gt_boxes[i])
+        if ref_labels is None:
+            line_set.paint_uniform_color(color)
+        else:
+            line_set.paint_uniform_color(box_colormap[ref_labels[i]])
+
+        vis.add_geometry(line_set)
+        box3d_list.append(box3d)
+
+    return vis, box3d_list
+
+def translate_boxes_to_open3d_instance(gt_boxes):
+    """
+             4-------- 6
+           /|         /|
+          5 -------- 3 .
+          | |        | |
+          . 7 -------- 1
+          |/         |/
+          2 -------- 0
+    """
+    center = gt_boxes[0:3]
+    lwh = gt_boxes[3:6]
+    axis_angles = np.array([0, 0, gt_boxes[6] + 1e-10])
+    rot = o3d.geometry.get_rotation_matrix_from_axis_angle(axis_angles)
+    print('rot: ', rot)
+    box3d = o3d.geometry.OrientedBoundingBox(center, rot, lwh)
+
+    line_set = o3d.geometry.LineSet.create_from_oriented_bounding_box(box3d)
+
+    # import ipdb; ipdb.set_trace(context=20)
+    lines = np.asarray(line_set.lines)
+    lines = np.concatenate([lines, np.array([[1, 4], [7, 6]])], axis=0)
+
+    line_set.lines = o3d.utility.Vector2iVector(lines)
+
+    return line_set, box3d
