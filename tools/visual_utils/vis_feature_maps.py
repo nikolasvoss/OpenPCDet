@@ -61,6 +61,10 @@ def registerHookForLayers(model, layer_names):
         except TypeError as e:
             print(f"Error: {e}")
 
+def printAllModelLayers(model):
+    """Prints all layers of the model."""
+    for name, module in model.named_modules():
+        print(name)
 
 def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_idx=None, z_plane=None):
     """Visualizes feature maps as slices in the z-plane using matplotlib.
@@ -258,7 +262,9 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_idx=None
         raise FileNotFoundError(f"Output directory `{output_dir}` does not exist.")
 
     # File operations
-    feature_map = feature_map.dense().detach()
+    if hasattr(feature_map, 'dense'):
+        feature_map = feature_map.dense()
+    feature_map = feature_map.detach()
     num_feature_maps = feature_map.shape[1]
 
     # Check if fmap_idx is provided as a list, if not and it is not None, make it a list
@@ -282,8 +288,14 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_idx=None
     for fmap_idx in fmap_indices:
         # one plot for each feature map
 
-        single_feature_map = feature_map[batch_idx, fmap_idx] # values[z,y,x]
-        z, y, x = torch.nonzero(single_feature_map, as_tuple=True)
+        single_feature_map = feature_map[batch_idx, fmap_idx] # values[z,y,x] / [y,x]
+        if single_feature_map.ndim == 2: # 2D feature map
+            print('2D feature map detected')
+            y, x = torch.nonzero(single_feature_map, as_tuple=True)
+            z = torch.zeros_like(x)
+            single_feature_map = single_feature_map.unsqueeze(0) # convert to [1, y, x] for compatibility
+        else: # 3D feature map
+            z, y, x = torch.nonzero(single_feature_map, as_tuple=True)
         # scale values for colors
         nonzero_values = single_feature_map[z, y, x].cpu().numpy()
         # create a tensor of size 3 x N with nonzero_values in the first row, the rest is 0
