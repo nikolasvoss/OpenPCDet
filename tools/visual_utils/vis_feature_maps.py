@@ -81,23 +81,38 @@ def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_idx=None, z_p
     if not os.path.exists(output_dir):
         raise FileNotFoundError(f"Output directory `{output_dir}` does not exist.")
 
-    feature_map = feature_map.dense().detach()
+    if hasattr(feature_map, 'dense'):
+        feature_map = feature_map.dense()
+    feature_map = feature_map.detach()
 
-    # Prepare to visualize only specified feature maps or z-planes
+    # Prepare to visualize only specified feature maps or z-planes (if it exists)
     num_feature_maps = feature_map.size(1)
-    num_z_planes = feature_map.size(2)
+    if feature_map.ndim == 4:
+        print("Feature map is 2D. Only one z-plane available. Setting z_plane to 0.")
+        num_z_planes = 1
+        z_plane = 0
+        feature_map = feature_map.unsqueeze(2)  # Add a dummy z-dimension for compatibility
+    else: # 3D feature map
+        num_z_planes = feature_map.size(2)
+        print(f"Feature map is 3D. Number of z-planes: {num_z_planes}")
 
     feature_map_indices = [fmap_idx] if fmap_idx is not None else range(num_feature_maps)
     z_plane_indices = [z_plane] if z_plane is not None else range(num_z_planes)
 
-    # Check index bounds
-    if batch_idx < 0 or batch_idx >= feature_map.size(0):
-        raise ValueError(f"batch_idx is out of bounds. It must be between 0 and {feature_map.size(0) - 1}")
-    if fmap_idx and (fmap_idx < 0 or fmap_idx >= num_feature_maps):
-        raise ValueError(f"fmap_idx is out of bounds. It must be between 0 and {num_feature_maps - 1}")
-    if z_plane and (z_plane < 0 or z_plane >= num_z_planes):
-        raise ValueError(f"z_plane is out of bounds. It must be between 0 and {num_z_planes - 1}")
+    # Check if fmap_idx is provided as a list, if not and it is not None, make it a list
+    if isinstance(fmap_idx, list):
+        fmap_indices = fmap_idx
+    elif fmap_idx is not None:
+        fmap_indices = [fmap_idx]
+    else:
+        fmap_indices = range(num_feature_maps)
+    # Check if passed indices are within bounds
+    for idx in fmap_indices:
+        if not (0 <= idx < num_feature_maps):
+            raise ValueError(f"fmap_idx {idx} is out of bounds. It must be between 0 and {num_feature_maps - 1}")
 
+    if batch_idx < 0 or batch_idx >= feature_map.shape[0]:
+        raise ValueError(f"batch_idx is out of bounds. It must be between 0 and {feature_map.shape[0] - 1}")
 
     visibility_factor = 4  # multiply all values for better visibility
 
@@ -105,7 +120,8 @@ def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_idx=None, z_p
     for fmap_idx in feature_map_indices:
         for z_plane in z_plane_indices:
             # Extract the specific slice to visualize
-            feature_slice = feature_map[batch_idx, fmap_idx, z_plane].cpu().numpy()
+            # squeeze(0) removes the z-dimension if it is 1
+            feature_slice = feature_map[batch_idx, fmap_idx, z_plane].squeeze(0).cpu().numpy()
 
             plt.figure(figsize=(8, 8))  # Set the figure size to be 8x8 inches
             plt.imshow(feature_slice*visibility_factor, cmap='PRGn', vmax=1, vmin=-1)
