@@ -66,16 +66,16 @@ def printAllModelLayers(model):
     for name, module in model.named_modules():
         print(name)
 
-def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_idx=None, z_plane=None):
+def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_indices=None, z_plane_indices=None, no_negative_values=False):
     """Visualizes feature maps as slices in the z-plane using matplotlib.
     The plots are saved as images in the specified output directory.
 
     Args:
-    feature_map [batch_size, feature_maps, z, y, x]: The feature map tensor to visualize.
+    feature_map [batch_size, fmaps, z, y, x], [batch_size, fmaps, y, x]: The feature map tensor to visualize.
     output_dir (str): The directory to save the visualization images.
-    batch_idx (int): The index of the batch to visualize. Default is 0.
-    fmap_idx (int): The index of the feature map to visualize. Default is None, which means all are being visualized.
-    z_plane (int): The index of the z-plane to visualize. Default is None, which means all are being visualized.
+    batch_idx (int, [int]): The index of the batch to visualize. Default is 0. Currently only supports one batch at a time.
+    fmap_idx (int, [int]): The index of the feature map to visualize. Default is None, which means all are being visualized.
+    z_plane (int, [int]): The index of the z-plane to visualize. Default is None, which means all are being visualized.
 
     Raises:
     ValueError: If the feature_map is None or the output_dir does not exist.
@@ -96,41 +96,61 @@ def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_idx=None, z_p
         num_z_planes = 1
         z_plane = 0
         feature_map = feature_map.unsqueeze(2)  # Add a dummy z-dimension for compatibility
+        print("Feature map is 2D. Only one z-plane available. Setting z_plane to 0.")
     else: # 3D feature map
         num_z_planes = feature_map.size(2)
         print(f"Feature map is 3D. Number of z-planes: {num_z_planes}")
 
-    feature_map_indices = [fmap_idx] if fmap_idx is not None else range(num_feature_maps)
-    z_plane_indices = [z_plane] if z_plane is not None else range(num_z_planes)
+    # If no feature map indices are provided, visualize all feature maps
+    if fmap_indices is None:
+        fmap_indices = list(range(num_feature_maps))
 
-    # Check if fmap_idx is provided as a list, if not and it is not None, make it a list
-    if isinstance(fmap_idx, list):
-        fmap_indices = fmap_idx
-    elif fmap_idx is not None:
-        fmap_indices = [fmap_idx]
-    else:
-        fmap_indices = range(num_feature_maps)
+    # check file types
+    if not isSingleIntOrListOfInts(batch_idx):
+        raise ValueError("batch_idx must be an integer or a list of integers.")
+    if not isSingleIntOrListOfInts(fmap_indices):
+        raise ValueError("fmap_indices must be an integer or a list of integers.")
+    if not isSingleIntOrListOfInts(z_plane_indices):
+        raise ValueError("z_plane_indices must be an integer or a list of integers.")
+
+    # turn passed integers into lists to be iterable
+    if isinstance(batch_idx, int):
+        batch_idx = [batch_idx]
+    if isinstance(fmap_indices, int):
+        fmap_indices = [fmap_indices]
+    if isinstance(z_plane_indices, int):
+        z_plane_indices = [z_plane_indices]
+
     # Check if passed indices are within bounds
     for idx in fmap_indices:
         if not (0 <= idx < num_feature_maps):
             raise ValueError(f"fmap_idx {idx} is out of bounds. It must be between 0 and {num_feature_maps - 1}")
 
-    if batch_idx < 0 or batch_idx >= feature_map.shape[0]:
-        raise ValueError(f"batch_idx is out of bounds. It must be between 0 and {feature_map.shape[0] - 1}")
+    for idx in batch_idx:
+        if not (0 <= idx < feature_map.size(0)):
+            raise ValueError(f"batch_idx {idx} is out of bounds. It must be between 0 and {feature_map.size(0) - 1}")
 
-    visibility_factor = 4  # multiply all values for better visibility
+    for idx in z_plane_indices:
+        if not (0 <= idx < num_z_planes):
+            raise ValueError(f"z_plane_idx {idx} is out of bounds. It must be between 0 and {num_z_planes - 1}")
+
+
+    visibility_factor = 2  # multiply all values for better visibility
 
     # Visualization loop
-    for fmap_idx in feature_map_indices:
+    for fmap_idx in fmap_indices:
         for z_plane in z_plane_indices:
             # Extract the specific slice to visualize
             # squeeze(0) removes the z-dimension if it is 1
             feature_slice = feature_map[batch_idx, fmap_idx, z_plane].squeeze(0).cpu().numpy()
 
             plt.figure(figsize=(8, 8))  # Set the figure size to be 8x8 inches
-            plt.imshow(feature_slice*visibility_factor, cmap='PRGn', vmax=1, vmin=-1)
+            if no_negative_values:
+                plt.imshow(abs(feature_slice*visibility_factor), cmap='copper', vmin=0, vmax=abs(feature_slice).max())
+            else:
+                plt.imshow(feature_slice*visibility_factor, cmap='PRGn')#, vmin=0)#, vmax=5)
             plt.colorbar()
-            file_name = os.path.join(output_dir, (f'map_batch{batch_idx}_fmap{fmap_idx}_z{z_plane}.jpg'))
+            file_name = os.path.join(output_dir, (f'map_batch{batch_idx[0]}_fmap{fmap_idx}_z{z_plane}.jpg'))
             plt.savefig(os.path.join(output_dir, file_name), dpi=150) # > 1024x1024 pixels (8 inches * 128 DPI)
             plt.close()
 
@@ -161,7 +181,7 @@ def visualizeFeatureMap3d(feature_map, output_dir, batch_idx=0, fmap_idx=None, i
     elif fmap_idx is not None:
         fmap_indices = [fmap_idx]
     else:
-        fmap_indices = range(num_feature_maps)
+        fmap_indices = list(range(num_feature_maps))
     # Check if passed indices are within bounds
     for idx in fmap_indices:
         if not (0 <= idx < num_feature_maps):
@@ -244,8 +264,8 @@ def visualizeFeatureMap3d(feature_map, output_dir, batch_idx=0, fmap_idx=None, i
 
     plt.show()
 
-def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_idx=None, input_points=None, same_plot=False, gt_boxes=None, pred_boxes=None):
-    """Visualizes 3D feature maps using matplotlib.
+def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=None, input_points=None, same_plot=False, gt_boxes=None, pred_boxes=None):
+    """Visualizes 3D feature maps using Open3D.
 
     Args:
     feature_map [batch_size, feature_maps, z, y, x]: The feature map tensor to visualize.
@@ -261,10 +281,19 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_idx=None
     if not os.path.exists(output_dir):
         raise FileNotFoundError(f"Output directory `{output_dir}` does not exist.")
 
+    # check file types
+    if not isSingleIntOrListOfInts(batch_idx):
+        raise ValueError("batch_idx must be an integer or a list of integers.")
+    if not isSingleIntOrListOfInts(fmap_indices):
+        raise ValueError("fmap_idx must be an integer or a list of integers.")
+
     # File operations
     if hasattr(feature_map, 'dense'):
         feature_map = feature_map.dense()
     feature_map = feature_map.detach()
+    if feature_map.ndim == 4:
+        print('2D feature map detected')
+        feature_map = feature_map.unsqueeze(2)  # Add a dummy z-dimension for compatibility
     num_feature_maps = feature_map.shape[1]
 
     # Check if fmap_idx is provided as a list, if not and it is not None, make it a list
@@ -316,22 +345,21 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_idx=None
         feature_pcd.points = points
         feature_pcd.colors = colors
 
-        voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(feature_pcd, voxel_size=1)
+        # WARNING: the voxels z-dimension is currently not correct
+        voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(feature_pcd, voxel_size=voxel_size[0])
 
         # Create Open3d Visualizer:
         vis = o3d.visualization.Visualizer()
         vis.create_window()
 
         vis.get_render_option().point_size = 2.5
-        vis.get_render_option().background_color = np.ones(3)
+        vis.get_render_option().background_color = [1, 1, 1]
 
         # Input Points Visualization
         if input_points is not None and same_plot:
             input_point_cloud = o3d.geometry.PointCloud()
             input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
             input_point_cloud.paint_uniform_color([0, 1, 0])  # green
-            # o3d.visualization.draw_geometries([voxel_grid, input_point_cloud],
-            # window_name=f'3D Feature Map and Input Points - Batch: {batch_idx}, Feature Map: {fmap_idx}')
             vis.add_geometry(input_point_cloud)
             vis.add_geometry(voxel_grid)
 
@@ -346,15 +374,11 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_idx=None
                     vis, box3d_list = draw_box(vis, gt_box.cpu(), (0, 0, 1))
                 print('Number of GT-Boxes: ', gt_boxes.shape[0])
         elif input_points is not None and not same_plot:
-            # o3d.visualization.draw_geometries([voxel_grid],
-            #                                   window_name=f'3D Feature Map - Batch: {batch_idx}, Feature Map: {fmap_idx}')
             vis.add_geometry(voxel_grid)
 
             input_point_cloud = o3d.geometry.PointCloud()
             input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
             input_point_cloud.paint_uniform_color([0, 1, 0])  # green
-            # o3d.visualization.draw_geometries([input_point_cloud],
-            #                                   window_name='Input Points')
             vis.create_window()
             vis.add_geometry(input_point_cloud)
         else:  # no input points were passed
