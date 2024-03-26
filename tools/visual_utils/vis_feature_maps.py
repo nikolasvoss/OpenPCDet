@@ -393,9 +393,11 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
         vis.run()
         vis.destroy_window()
 
-def visualizeFmapEntropy(feature_map):
+def visualizeFmapEntropy(feature_map, input_points=None):
     if feature_map is None:
         raise ValueError("No feature map available. Check if the hook was triggered correctly.")
+    if input_points is not None:
+        input_points = input_points[:, 1:4]  # Only use the xyz coordinates
 
     if hasattr(feature_map, 'dense'):
         feature_map = feature_map.dense()
@@ -403,11 +405,15 @@ def visualizeFmapEntropy(feature_map):
     if feature_map.ndim == 4:
         print('2D feature map detected')
         feature_map = feature_map.unsqueeze(2) # Add a dummy z-dimension for compatibility
+    feature_map = feature_map.cpu().numpy()
+    feature_map -= np.percentile(feature_map, 5)
+    feature_map /= np.percentile(feature_map, 95)  # scale to 0-1
+    feature_map = np.clip(feature_map, 0, 1)  # Ensure values are within range [0, 1]
 
-    fmap_entropy = entropyOfFmaps(feature_map.squeeze(0).cpu().numpy())  # remove batch dimension
-    # fmap_entropy -= np.percentile(fmap_entropy, 5)
-    # fmap_entropy /= np.percentile(fmap_entropy, 95)  # scale to 0-1
-    # fmap_entropy = np.clip(fmap_entropy, 0, 1)  # Ensure values are within range [0, 1]
+    fmap_entropy = entropyOfFmaps(feature_map.squeeze(0))  # remove batch dimension
+    fmap_entropy -= np.percentile(fmap_entropy, 5)
+    fmap_entropy /= np.percentile(fmap_entropy, 95)  # scale to 0-1
+    fmap_entropy = np.clip(fmap_entropy, 0, 1)  # Ensure values are within range [0, 1]
     fmap_entropy = fmap_entropy.squeeze()
     # plt.imshow(fmap_entropy)
     # plt.colorbar()
@@ -421,6 +427,7 @@ def visualizeFmapEntropy(feature_map):
     voxel_size[0] = (pointcloud_range[3] - pointcloud_range[0]) / feature_map.shape[4]  # x
     voxel_size[1] = (pointcloud_range[4] - pointcloud_range[1]) / feature_map.shape[3]  # y
     voxel_size[2] = (pointcloud_range[5] - pointcloud_range[2]) / feature_map.shape[2]  # z
+    print('Voxel size: ', voxel_size)
     #
     # x_meters = np.array(range(feature_map.shape[4]), dtype=np.float32) * voxel_size[0]  # voxel size and pc range
     # y_meters = np.array(range(feature_map.shape[3]), dtype=np.float32) * voxel_size[1]
@@ -429,33 +436,54 @@ def visualizeFmapEntropy(feature_map):
     # else:
     #     z_meters = np.array(range(feature_map.shape[2]), dtype=np.float32) * voxel_size[2]
 
-    x = np.linspace(pointcloud_range[0], pointcloud_range[3], feature_map.shape[4])
-    y = np.linspace(pointcloud_range[1], pointcloud_range[4], feature_map.shape[3])
-    z = np.linspace(pointcloud_range[2], pointcloud_range[5], feature_map.shape[2])
+    x = np.linspace(pointcloud_range[0], pointcloud_range[3], feature_map.shape[4], endpoint=False)
+    y = np.linspace(pointcloud_range[1], pointcloud_range[4], feature_map.shape[3], endpoint=False) # added minus, because the y-axis was flipped
+    z = np.linspace(pointcloud_range[2], pointcloud_range[5], feature_map.shape[2], endpoint=False)
 
     # Create Open3d Visualizer:
     points = npVectorToO3DVec3dVec(x,y,z)
-    colors = np.zeros((len(fmap_entropy.flatten()), 3))
+    colors = np.zeros((len(fmap_entropy.flatten()), 3), dtype=np.float64)
     colors[:, 0] = fmap_entropy.flatten()
+    if fmap_entropy.ndim == 3:
+        fmap_entropy = np.sum(fmap_entropy, axis=0)
+    # depth_dummy = np.zeros_like(fmap_entropy)
+    # ff = o3d.geometry.Image(fmap_entropy)
     colors = o3d.utility.Vector3dVector(colors)
-
+    #
     feature_pcd = o3d.geometry.PointCloud()
     feature_pcd.points = points
     feature_pcd.colors = colors
-
-    # WARNING: the voxels z-dimension is currently not correct
+    #
+    # # WARNING: the voxels z-dimension is currently not correct
     voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(feature_pcd, voxel_size=voxel_size[0])
-
-    # Create Open3d Visualizer:
+    #
+    # # Create Open3d Visualizer:
     vis = o3d.visualization.Visualizer()
     vis.create_window()
 
     vis.get_render_option().point_size = 2.5
     vis.get_render_option().background_color = [1, 1, 1]
 
+    # plot the sample pc
+    input_point_cloud = o3d.geometry.PointCloud()
+    input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
+    input_point_cloud.paint_uniform_color([0, 1, 0])  # green
+    vis.add_geometry(input_point_cloud)
+
     vis.add_geometry(voxel_grid)
+    # vis.add_geometry(ff)
     vis.run()
     vis.destroy_window()
+
+def drawPredBoxes(vis, pred_boxes):
+    vis, box3d_list = draw_box(vis, pred_boxes.cpu(), (1, 0, 0))
+    print('Number of Pred-Boxes: ', pred_boxes.shape[0])
+    return vis, box3d_list
+
+def drawGtBoxes(vis, gt_boxes):
+    vis, box3d_list = draw_box(vis, gt_boxes.cpu(), (0, 0, 1))
+    print('Number of GT-Boxes: ', gt_boxes.shape[0])
+    return vis, box3d_list
 
 def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None):
     box_colormap = [
