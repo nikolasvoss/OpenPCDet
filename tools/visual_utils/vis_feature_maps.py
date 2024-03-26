@@ -385,6 +385,69 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
         vis.run()
         vis.destroy_window()
 
+def visualizeFmapEntropy(feature_map):
+    if feature_map is None:
+        raise ValueError("No feature map available. Check if the hook was triggered correctly.")
+
+    if hasattr(feature_map, 'dense'):
+        feature_map = feature_map.dense()
+    feature_map = feature_map.detach()
+    if feature_map.ndim == 4:
+        print('2D feature map detected')
+        feature_map = feature_map.unsqueeze(2) # Add a dummy z-dimension for compatibility
+
+    fmap_entropy = entropyOfFmaps(feature_map.squeeze(0).cpu().numpy())  # remove batch dimension
+    # fmap_entropy -= np.percentile(fmap_entropy, 5)
+    # fmap_entropy /= np.percentile(fmap_entropy, 95)  # scale to 0-1
+    # fmap_entropy = np.clip(fmap_entropy, 0, 1)  # Ensure values are within range [0, 1]
+    fmap_entropy = fmap_entropy.squeeze()
+    # plt.imshow(fmap_entropy)
+    # plt.colorbar()
+    # plt.show()
+
+    # Point cloud range from nuscenes.yaml
+    pointcloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+    # original voxel size from nuscenes.yaml
+    voxel_size = [0.1, 0.1, 0.2]
+    # voxel size fitted to current feature map
+    voxel_size[0] = (pointcloud_range[3] - pointcloud_range[0]) / feature_map.shape[4]  # x
+    voxel_size[1] = (pointcloud_range[4] - pointcloud_range[1]) / feature_map.shape[3]  # y
+    voxel_size[2] = (pointcloud_range[5] - pointcloud_range[2]) / feature_map.shape[2]  # z
+    #
+    # x_meters = np.array(range(feature_map.shape[4]), dtype=np.float32) * voxel_size[0]  # voxel size and pc range
+    # y_meters = np.array(range(feature_map.shape[3]), dtype=np.float32) * voxel_size[1]
+    # if feature_map.shape[2] == 1:
+    #     z_meters = np.zeros_like(x_meters)
+    # else:
+    #     z_meters = np.array(range(feature_map.shape[2]), dtype=np.float32) * voxel_size[2]
+
+    x = np.linspace(pointcloud_range[0], pointcloud_range[3], feature_map.shape[4])
+    y = np.linspace(pointcloud_range[1], pointcloud_range[4], feature_map.shape[3])
+    z = np.linspace(pointcloud_range[2], pointcloud_range[5], feature_map.shape[2])
+
+    # Create Open3d Visualizer:
+    points = npVectorToO3DVec3dVec(x,y,z)
+    colors = np.zeros((len(fmap_entropy.flatten()), 3))
+    colors[:, 0] = fmap_entropy.flatten()
+    colors = o3d.utility.Vector3dVector(colors)
+
+    feature_pcd = o3d.geometry.PointCloud()
+    feature_pcd.points = points
+    feature_pcd.colors = colors
+
+    # WARNING: the voxels z-dimension is currently not correct
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(feature_pcd, voxel_size=voxel_size[0])
+
+    # Create Open3d Visualizer:
+    vis = o3d.visualization.Visualizer()
+    vis.create_window()
+
+    vis.get_render_option().point_size = 2.5
+    vis.get_render_option().background_color = [1, 1, 1]
+
+    vis.add_geometry(voxel_grid)
+    vis.run()
+    vis.destroy_window()
 
 def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None):
     box_colormap = [
@@ -433,3 +496,48 @@ def translate_boxes_to_open3d_instance(gt_boxes):
     line_set.lines = o3d.utility.Vector2iVector(lines)
 
     return line_set, box3d
+
+def isSingleIntOrListOfInts(value):
+    # First, check if the value is a single integer
+    if isinstance(value, int):
+        return True
+    # Then, check if it is a list
+    elif isinstance(value, list):
+        # Check if all elements in the list are integers
+        return all(isinstance(item, int) for item in value)
+    # If it's neither an integer nor a list of integers, return False
+    return False
+
+def entropyOfFmaps(feature_map):
+    # Expects a feature map tensor of shape [feature_maps, z, y, x] or [feature_maps, y, x]
+    feature_map = abs(feature_map)
+    e = 0.000001
+    ent_alpha = -np.sum((feature_map / np.sum(feature_map+e, axis=0)) *
+                        np.log((feature_map + e) / np.sum(feature_map+e, axis=0)), axis=0)
+    return ent_alpha
+
+def npVectorToO3DVec3dVec(x:np.array, y:np.array=None, z:np.array=None):
+    # Converts numpy arrays to Open3D Vector3dVector.
+    # If y or z are not provided, they are set to 0.
+    # Expects:
+    # x: np.array of shape (N,)
+    # y: np.array of shape (M,) or None
+    # z: np.array of shape (K,) or None
+    # Returns:
+    # o3d.utility.Vector3dVector of shape (N*M*K, 3)
+    # usage:
+    # x = np.linspace(-3, 3, 401)
+    # y = ...
+    # pcd = o3d.geometry.PointCloud()
+    # pcd.points = npVectorToO3DVec3dVec(x, y, z)
+    if y is None:
+        y = np.zeros_like(x)
+    if z is None:
+        z = np.zeros_like(x)
+    mesh_x, mesh_y, mesh_z = np.meshgrid(x, y, z)
+    xyz = np.zeros((np.size(mesh_x), 3))
+    xyz[:, 0] = mesh_x.flatten()
+    xyz[:, 1] = mesh_y.flatten()
+    xyz[:, 2] = mesh_z.flatten()
+
+    return o3d.utility.Vector3dVector(xyz)
