@@ -92,9 +92,8 @@ def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_indices=None,
     # Prepare to visualize only specified feature maps or z-planes (if it exists)
     num_feature_maps = feature_map.size(1)
     if feature_map.ndim == 4:
-        print("Feature map is 2D. Only one z-plane available. Setting z_plane to 0.")
         num_z_planes = 1
-        z_plane = 0
+        z_plane_indices = 0
         feature_map = feature_map.unsqueeze(2)  # Add a dummy z-dimension for compatibility
         print("Feature map is 2D. Only one z-plane available. Setting z_plane to 0.")
     else: # 3D feature map
