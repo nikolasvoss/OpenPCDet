@@ -295,20 +295,24 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
         feature_map = feature_map.unsqueeze(2)  # Add a dummy z-dimension for compatibility
     num_feature_maps = feature_map.shape[1]
 
-    # Check if fmap_idx is provided as a list, if not and it is not None, make it a list
-    if isinstance(fmap_idx, list):
-        fmap_indices = fmap_idx
-    elif fmap_idx is not None:
-        fmap_indices = [fmap_idx]
-    else:
-        fmap_indices = range(num_feature_maps)
+    # turn passed integers into lists to be iterable
+    if isinstance(batch_idx, int):
+        batch_idx = [batch_idx]
+    if isinstance(fmap_indices, int):
+        fmap_indices = [fmap_indices]
+
+    # If no feature map indices are provided, visualize all feature maps
+    if fmap_indices is None:
+        fmap_indices = list(range(num_feature_maps))
     # Check if passed indices are within bounds
     for idx in fmap_indices:
         if not (0 <= idx < num_feature_maps):
             raise ValueError(f"fmap_idx {idx} is out of bounds. It must be between 0 and {num_feature_maps - 1}")
 
-    if batch_idx < 0 or batch_idx >= feature_map.shape[0]:
-        raise ValueError(f"batch_idx is out of bounds. It must be between 0 and {feature_map.shape[0] - 1}")
+    for idx in batch_idx:
+        if not (0 <= idx < feature_map.size(0)):
+            raise ValueError(
+                f"batch_idx {idx} is out of bounds. It must be between 0 and {feature_map.size(0) - 1}")
 
     if input_points is not None:
         input_points = input_points[:, 1:4]  # Only use the xyz coordinates
@@ -316,26 +320,30 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
     for fmap_idx in fmap_indices:
         # one plot for each feature map
 
-        single_feature_map = feature_map[batch_idx, fmap_idx] # values[z,y,x] / [y,x]
-        if single_feature_map.ndim == 2: # 2D feature map
-            print('2D feature map detected')
-            y, x = torch.nonzero(single_feature_map, as_tuple=True)
-            z = torch.zeros_like(x)
-            single_feature_map = single_feature_map.unsqueeze(0) # convert to [1, y, x] for compatibility
-        else: # 3D feature map
-            z, y, x = torch.nonzero(single_feature_map, as_tuple=True)
+        # squeeze removes leftover dimensions if they are 1
+        single_feature_map = feature_map[batch_idx, fmap_idx].squeeze(0) # values[z,y,x] / [1,y,x], remove features dimension
+
+        z, y, x = torch.nonzero(single_feature_map, as_tuple=True)
         # scale values for colors
-        nonzero_values = single_feature_map[z, y, x].cpu().numpy()
-        # create a tensor of size 3 x N with nonzero_values in the first row, the rest is 0
+        nonzero_values = single_feature_map[z.cpu(), y.cpu(), x.cpu()]
+
+        # create a nparray of size 3 x N with nonzero_values in the first row, the rest is 0
         colors = np.zeros((3, len(nonzero_values)))
-        colors[0, :] = abs(nonzero_values)
-        colors = colors / colors.max() * 2 # values between 0 and 1
-        colors = np.clip(colors, 0, 1)  # Ensure values are within range [0, 1]
+        colors[0] = nonzero_values.cpu().numpy()
         colors = colors.astype(np.float64)  # Convert to float64, as Open3D expects
 
-        x_meters = x.cpu().numpy() * 0.1 - 51.2  # voxel size and pc range
-        y_meters = y.cpu().numpy() * 0.1 - 51.2
-        z_meters = z.cpu().numpy() * 0.2 - 4.9
+        # Point cloud range from nuscenes.yaml
+        pointcloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+        # original voxel size from nuscenes.yaml
+        voxel_size = [0.1, 0.1, 0.2]
+        # voxel size fitted to current feature map
+        voxel_size[0] = (pointcloud_range[3] - pointcloud_range[0]) / single_feature_map.shape[2] # x
+        voxel_size[1] = (pointcloud_range[4] - pointcloud_range[1]) / single_feature_map.shape[1] # y
+        voxel_size[2] = (pointcloud_range[5] - pointcloud_range[2]) / single_feature_map.shape[0] # z
+
+        x_meters = x.cpu().numpy() * voxel_size[0] - 51.2  # voxel size and pc range
+        y_meters = y.cpu().numpy() * voxel_size[1] - 51.2
+        z_meters = z.cpu().numpy() * voxel_size[2] - 4.9
 
         points = o3d.utility.Vector3dVector(np.vstack((x_meters, y_meters, z_meters)).T)
         colors = o3d.utility.Vector3dVector(colors.T)
