@@ -372,14 +372,10 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
 
             #test
             if pred_boxes is not None:
-                vis, box3d_list = draw_box(vis, pred_boxes.cpu(), (1, 0, 0))
-                print('Number of Pred-Boxes: ', pred_boxes.shape[0])
+                vis, box3d_list = drawPredBoxes(vis, pred_boxes)
             if gt_boxes is not None:
                 gt_angles = gt_boxes[:, 6:8].reshape((-1, 2))
-                for i in range(gt_boxes.shape[0]):
-                    gt_box = gt_boxes[i, :].reshape((1, 9))
-                    vis, box3d_list = draw_box(vis, gt_box.cpu(), (0, 0, 1))
-                print('Number of GT-Boxes: ', gt_boxes.shape[0])
+                vis, box3d_list = drawGtBoxes(vis, gt_boxes)
         elif input_points is not None and not same_plot:
             vis.add_geometry(voxel_grid)
 
@@ -393,7 +389,7 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
         vis.run()
         vis.destroy_window()
 
-def visualizeFmapEntropy(feature_map, input_points=None):
+def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_boxes=None):
     if feature_map is None:
         raise ValueError("No feature map available. Check if the hook was triggered correctly.")
     if input_points is not None:
@@ -441,7 +437,7 @@ def visualizeFmapEntropy(feature_map, input_points=None):
     z = np.linspace(pointcloud_range[2], pointcloud_range[5], feature_map.shape[2], endpoint=False)
 
     # Create Open3d Visualizer:
-    points = npVectorToO3DVec3dVec(x,y,z)
+    points = npVectorToO3dPoints(x,y,z)
     colors = np.zeros((len(fmap_entropy.flatten()), 3), dtype=np.float64)
     colors[:, 0] = fmap_entropy.flatten()
     if fmap_entropy.ndim == 3:
@@ -470,6 +466,13 @@ def visualizeFmapEntropy(feature_map, input_points=None):
     input_point_cloud.paint_uniform_color([0, 1, 0])  # green
     vis.add_geometry(input_point_cloud)
 
+    # plot gt and pred boxes
+    if pred_boxes is not None:
+        vis, box3d_list = drawPredBoxes(vis, pred_boxes)
+    if gt_boxes is not None:
+        gt_angles = gt_boxes[:, 6:8].reshape((-1, 2))
+        vis, box3d_list = drawGtBoxes(vis, gt_boxes)
+    
     vis.add_geometry(voxel_grid)
     # vis.add_geometry(ff)
     vis.run()
@@ -481,10 +484,12 @@ def drawPredBoxes(vis, pred_boxes):
     return vis, box3d_list
 
 def drawGtBoxes(vis, gt_boxes):
-    vis, box3d_list = draw_box(vis, gt_boxes.cpu(), (0, 0, 1))
+    for i in range(gt_boxes.shape[0]):
+        gt_box = gt_boxes[i, :].reshape((1, 9))
+        vis, box3d_list = draw_box(vis, gt_box.cpu(), (0, 0, 1))
     print('Number of GT-Boxes: ', gt_boxes.shape[0])
     return vis, box3d_list
-
+    
 def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None):
     box_colormap = [
         [1, 1, 1],
@@ -552,7 +557,7 @@ def entropyOfFmaps(feature_map):
                         np.log((feature_map + e) / np.sum(feature_map+e, axis=0)), axis=0)
     return ent_alpha
 
-def npVectorToO3DVec3dVec(x:np.array, y:np.array=None, z:np.array=None):
+def npVectorToO3dPoints(x:np.array, y:np.array=None, z:np.array=None):
     # Converts numpy arrays to Open3D Vector3dVector.
     # If y or z are not provided, they are set to 0.
     # Expects:
@@ -565,7 +570,7 @@ def npVectorToO3DVec3dVec(x:np.array, y:np.array=None, z:np.array=None):
     # x = np.linspace(-3, 3, 401)
     # y = ...
     # pcd = o3d.geometry.PointCloud()
-    # pcd.points = npVectorToO3DVec3dVec(x, y, z)
+    # pcd.points = npVectorToO3dPoints(x, y, z)
     if y is None:
         y = np.zeros_like(x)
     if z is None:
