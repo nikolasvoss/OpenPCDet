@@ -433,7 +433,8 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
 
     x = np.linspace(pointcloud_range[0], pointcloud_range[3], feature_map.shape[4], endpoint=False)
     y = np.linspace(pointcloud_range[1], pointcloud_range[4], feature_map.shape[3], endpoint=False) # added minus, because the y-axis was flipped
-    z = np.linspace(pointcloud_range[2], pointcloud_range[5], feature_map.shape[2], endpoint=False)
+    # z = np.linspace(pointcloud_range[2], pointcloud_range[5], feature_map.shape[2], endpoint=False)
+    z = np.array([-5.])
 
     # Create Open3d Visualizer:
     points = npVectorToO3dPoints(x, y, z)
