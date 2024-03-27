@@ -142,7 +142,10 @@ def main():
         #                              same_plot=True,
         #                              gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
         #                              pred_boxes=pred_dicts[0]['pred_boxes'])
-        visfm.visualizeFmapEntropy(visfm.feature_maps, input_dict['points'])
+        visfm.visualizeFmapEntropy(visfm.feature_maps,
+                                   input_dict['points'],
+                                   gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
+                                   pred_boxes=pred_dicts[0]['pred_boxes'])
 
 if __name__ == '__main__':
     main()
