@@ -270,7 +270,7 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
     feature_map [batch_size, feature_maps, z, y, x]: The feature map tensor to visualize.
     output_dir (str): The directory to save the visualization images.
     batch_idx (int): The index of the batch to visualize. Default is 0.
-    fmap_idx (int): The index of the feature map to visualize. Default is None, which means all are being visualized.
+    fmap_indices (int): The index of the feature map to visualize. Default is None, which means all are being visualized.
 
     Raises:
     ValueError: If the feature_map is None or the output_dir does not exist.
@@ -284,7 +284,7 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
     if not isSingleIntOrListOfInts(batch_idx):
         raise ValueError("batch_idx must be an integer or a list of integers.")
     if not isSingleIntOrListOfInts(fmap_indices):
-        raise ValueError("fmap_idx must be an integer or a list of integers.")
+        raise ValueError("fmap_indices must be an integer or a list of integers.")
 
     # File operations
     if hasattr(feature_map, 'dense'):
@@ -307,7 +307,7 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
     # Check if passed indices are within bounds
     for idx in fmap_indices:
         if not (0 <= idx < num_feature_maps):
-            raise ValueError(f"fmap_idx {idx} is out of bounds. It must be between 0 and {num_feature_maps - 1}")
+            raise ValueError(f"fmap_indices {idx} is out of bounds. It must be between 0 and {num_feature_maps - 1}")
 
     for idx in batch_idx:
         if not (0 <= idx < feature_map.size(0)):
@@ -357,10 +357,10 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
 
         # Create Open3d Visualizer:
         vis = o3d.visualization.Visualizer()
-        vis.create_window()
+        vis.create_window(window_name=f'Voxel Size: {voxel_size}')
 
         vis.get_render_option().point_size = 2.5
-        vis.get_render_option().background_color = [1, 1, 1]
+        vis.get_render_option().background_color = [1, 1, 1] #[0.25, 0.25, 0.25]
 
         # Input Points Visualization
         if input_points is not None and same_plot:
@@ -411,9 +411,11 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
     fmap_entropy /= np.percentile(fmap_entropy, 95)  # scale to 0-1
     fmap_entropy = np.clip(fmap_entropy, 0, 1)  # Ensure values are within range [0, 1]
     fmap_entropy = fmap_entropy.squeeze()
-    # plt.imshow(fmap_entropy)
-    # plt.colorbar()
-    # plt.show()
+
+    # sum remaining z-dimension to show only one plane
+    if fmap_entropy.ndim == 3:
+        fmap_entropy = np.sum(fmap_entropy, axis=0)
+        fmap_entropy /= fmap_entropy.max()  # scale to 0-1
 
     # Point cloud range from nuscenes.yaml
     pointcloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
@@ -424,20 +426,14 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
     voxel_size[1] = (pointcloud_range[4] - pointcloud_range[1]) / feature_map.shape[3]  # y
     voxel_size[2] = (pointcloud_range[5] - pointcloud_range[2]) / feature_map.shape[2]  # z
     print('Voxel size: ', voxel_size)
-    #
-    # x_meters = np.array(range(feature_map.shape[4]), dtype=np.float32) * voxel_size[0]  # voxel size and pc range
-    # y_meters = np.array(range(feature_map.shape[3]), dtype=np.float32) * voxel_size[1]
-    # if feature_map.shape[2] == 1:
-    #     z_meters = np.zeros_like(x_meters)
-    # else:
-    #     z_meters = np.array(range(feature_map.shape[2]), dtype=np.float32) * voxel_size[2]
+
 
     x = np.linspace(pointcloud_range[0], pointcloud_range[3], feature_map.shape[4], endpoint=False)
     y = np.linspace(pointcloud_range[1], pointcloud_range[4], feature_map.shape[3], endpoint=False) # added minus, because the y-axis was flipped
     z = np.linspace(pointcloud_range[2], pointcloud_range[5], feature_map.shape[2], endpoint=False)
 
     # Create Open3d Visualizer:
-    points = npVectorToO3dPoints(x,y,z)
+    points = npVectorToO3dPoints(x, y, z)
     colors = np.zeros((len(fmap_entropy.flatten()), 3), dtype=np.float64)
     colors[:, 0] = fmap_entropy.flatten()
     if fmap_entropy.ndim == 3:
@@ -445,7 +441,7 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
     # depth_dummy = np.zeros_like(fmap_entropy)
     # ff = o3d.geometry.Image(fmap_entropy)
     colors = o3d.utility.Vector3dVector(colors)
-    #
+
     feature_pcd = o3d.geometry.PointCloud()
     feature_pcd.points = points
     feature_pcd.colors = colors
@@ -474,7 +470,6 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
         vis, box3d_list = drawGtBoxes(vis, gt_boxes)
     
     vis.add_geometry(voxel_grid)
-    # vis.add_geometry(ff)
     vis.run()
     vis.destroy_window()
 
