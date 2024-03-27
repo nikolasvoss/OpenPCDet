@@ -402,14 +402,17 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
         print('2D feature map detected')
         feature_map = feature_map.unsqueeze(2) # Add a dummy z-dimension for compatibility
     feature_map = feature_map.cpu().numpy()
-    feature_map -= np.percentile(feature_map, 5)
-    feature_map /= np.percentile(feature_map, 95)  # scale to 0-1
-    feature_map = np.clip(feature_map, 0, 1)  # Ensure values are within range [0, 1]
+    feature_map -= feature_map.min()
+    feature_map /= feature_map.max()  # scale to 0-1
+    # feature_map = np.clip(feature_map, 0, 1)  # Ensure values are within range [0, 1]
+    # create a loop for one entropyOfFmaps call for each z-plane. place them all in fmap_entropy with format [z, y, x]
+    fmap_entropy = np.zeros(feature_map.shape[2:])
+    for i in range(feature_map.shape[2]):
+        fmap_entropy[i] = entropyOfFmaps(feature_map[:, :, i, :, :].squeeze(0))
 
-    fmap_entropy = entropyOfFmaps(feature_map.squeeze(0))  # remove batch dimension
-    fmap_entropy -= np.percentile(fmap_entropy, 5)
-    fmap_entropy /= np.percentile(fmap_entropy, 95)  # scale to 0-1
-    fmap_entropy = np.clip(fmap_entropy, 0, 1)  # Ensure values are within range [0, 1]
+    fmap_entropy -= fmap_entropy.min()
+    fmap_entropy /= fmap_entropy.max()  # scale to 0-1
+    # fmap_entropy = np.clip(fmap_entropy, 0, 1)  # Ensure values are within range [0, 1]
     fmap_entropy = fmap_entropy.squeeze()
 
     # sum remaining z-dimension to show only one plane
@@ -436,10 +439,6 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
     points = npVectorToO3dPoints(x, y, z)
     colors = np.zeros((len(fmap_entropy.flatten()), 3), dtype=np.float64)
     colors[:, 0] = fmap_entropy.flatten()
-    if fmap_entropy.ndim == 3:
-        fmap_entropy = np.sum(fmap_entropy, axis=0)
-    # depth_dummy = np.zeros_like(fmap_entropy)
-    # ff = o3d.geometry.Image(fmap_entropy)
     colors = o3d.utility.Vector3dVector(colors)
 
     feature_pcd = o3d.geometry.PointCloud()
