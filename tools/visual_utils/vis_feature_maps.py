@@ -627,3 +627,13 @@ def compute_histograms(feature_map, bin_edges, num_bins):
         for j in range(w):
             histograms[:, i, j], _ = np.histogram(feature_map[:, i, j], bins=bin_edges)
     return histograms
+
+def plotHistAndBoxplot(fmap_entropy, bins=100):
+    fig, ax = plt.subplots(1, 2, figsize=(10, 5))
+    ax[0].hist(fmap_entropy.flatten(), bins=100, color='blue', alpha=0.7)
+    ax[0].set_title('Histogram')
+    ax[0].set_ylabel('Frequency')
+    ax[1].boxplot(fmap_entropy.flatten(), vert=False, showflyers=True)
+    ax[1].set_title('Boxplot')
+    plt.tight_layout()
+    plt.show()
