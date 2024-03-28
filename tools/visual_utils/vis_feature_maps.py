@@ -3,6 +3,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import open3d as o3d
+from numba import jit
 
 global feature_maps
 
@@ -402,17 +403,12 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
         print('2D feature map detected')
         feature_map = feature_map.unsqueeze(2) # Add a dummy z-dimension for compatibility
     feature_map = feature_map.cpu().numpy()
-    feature_map -= feature_map.min()
-    feature_map /= feature_map.max()  # scale to 0-1
-    # feature_map = np.clip(feature_map, 0, 1)  # Ensure values are within range [0, 1]
+
     # create a loop for one entropyOfFmaps call for each z-plane. place them all in fmap_entropy with format [z, y, x]
     fmap_entropy = np.zeros(feature_map.shape[2:])
     for i in range(feature_map.shape[2]):
         fmap_entropy[i] = entropyOfFmaps(feature_map[:, :, i, :, :].squeeze(0))
 
-    fmap_entropy -= fmap_entropy.min()
-    fmap_entropy /= fmap_entropy.max()  # scale to 0-1
-    # fmap_entropy = np.clip(fmap_entropy, 0, 1)  # Ensure values are within range [0, 1]
     fmap_entropy = fmap_entropy.squeeze()
 
     # sum remaining z-dimension to show only one plane
@@ -420,6 +416,12 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
         fmap_entropy = np.sum(fmap_entropy, axis=0)
         fmap_entropy -= fmap_entropy.min() # this changes the entropy result for better visibility
         fmap_entropy /= fmap_entropy.max()  # scale to 0-1
+
+    # sigmoid function
+    x_shift = 0.6
+    multiplier = 12
+    fmap_entropy = 1 / (1 + np.exp(-multiplier * (fmap_entropy - x_shift)))
+
 
     # Point cloud range from nuscenes.yaml
     pointcloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
@@ -548,12 +550,63 @@ def isSingleIntOrListOfInts(value):
     return False
 
 def entropyOfFmaps(feature_map):
-    # Expects a feature map tensor of shape [feature_maps, z, y, x] or [feature_maps, y, x]
-    feature_map = abs(feature_map)
-    e = 0.000001
-    ent_alpha = -np.sum((feature_map / np.sum(feature_map+e, axis=0)) *
-                        np.log((feature_map + e) / np.sum(feature_map+e, axis=0)), axis=0)
-    return ent_alpha
+    """
+        Compute the normalized entropy of a feature map tensor.
+
+        This function takes a feature map tensor with dimensions [feature_maps, y, x]
+        and calculates its entropy after applying outlier removal, normalization, and
+        equal-width binning for probability estimation.
+
+        Parameters:
+        feature_map (ndarray): A numpy array representing the feature map tensor with shape
+                               [feature_maps, y, x].
+
+        Returns:
+        ndarray: A 2D numpy array representing the normalized entropy over all feature maps
+                 for each spatial location [y, x].
+
+        Notes:
+        - The function computes the entropy over feature maps, and it performs several pre-processing
+          steps including (i) removal of outliers based on percentile, (ii) normalization of values
+          to the range [0, 1], and (iii) probability estimation using histogram binning.
+        - The output entropy is normalized to the range [0, 1].
+        - The function handles the case of an empty feature map by returning zeros.
+        - An epsilon value 'e' is added to probabilities to avoid logarithm of zero errors.
+        - Binning of feature map values is done using 100 equal-width bins between 0 and 1.
+        """
+
+    # Expects a feature map tensor of shape [feature_maps, y, x]
+    # Abort if the feature map is empty
+    if feature_map.max() == 0 and feature_map.min() == 0:
+        return np.zeros(feature_map.shape[1:])
+    feature_map_no_zeroes = feature_map[feature_map!=0]
+    ### Cut outliers and normalize
+    lower_limit = np.percentile(feature_map_no_zeroes, 0.01)
+    upper_limit = np.percentile(feature_map_no_zeroes, 99.99)
+    del feature_map_no_zeroes
+    # set all values below or above limits to limits
+    feature_map[feature_map < lower_limit] = lower_limit
+    feature_map[feature_map > upper_limit] = upper_limit
+    # normalize
+    feature_map -= lower_limit
+    feature_map = feature_map * 1 / (upper_limit-lower_limit) # set maximum value to 1
+
+    num_bins = feature_map.shape[0] // 10
+    print('num_bins: ', num_bins)
+    bin_edges = np.linspace(0, 1, num_bins + 1)
+    histograms = compute_histograms(feature_map, bin_edges, num_bins)
+    probabilities = histograms / histograms.sum(axis=0, keepdims=True)
+
+    # Make sure we don't have any zeros in probabilities by adding a small constant.
+    e = 1e-10
+    probabilities += e
+
+    entropy = -np.sum(probabilities * np.log(probabilities), axis=0)
+    # normalize
+    entropy -= entropy.min()
+    entropy /= entropy.max()
+    return entropy
+
 
 def npVectorToO3dPoints(x:np.array, y:np.array=None, z:np.array=None):
     # Converts numpy arrays to Open3D Vector3dVector.
@@ -580,3 +633,13 @@ def npVectorToO3dPoints(x:np.array, y:np.array=None, z:np.array=None):
     xyz[:, 2] = mesh_z.flatten()
 
     return o3d.utility.Vector3dVector(xyz)
+
+
+@jit(nopython=True)
+def compute_histograms(feature_map, bin_edges, num_bins):
+    h, w = feature_map.shape[1], feature_map.shape[2]
+    histograms = np.zeros((num_bins, h, w), dtype=np.uint32)
+    for i in range(h):
+        for j in range(w):
+            histograms[:, i, j], _ = np.histogram(feature_map[:, i, j], bins=bin_edges)
+    return histograms
