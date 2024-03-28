@@ -418,6 +418,7 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
     # sum remaining z-dimension to show only one plane
     if fmap_entropy.ndim == 3:
         fmap_entropy = np.sum(fmap_entropy, axis=0)
+        fmap_entropy -= fmap_entropy.min() # this changes the entropy result for better visibility
         fmap_entropy /= fmap_entropy.max()  # scale to 0-1
 
     # Point cloud range from nuscenes.yaml
@@ -433,7 +434,6 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
 
     x = np.linspace(pointcloud_range[0], pointcloud_range[3], feature_map.shape[4], endpoint=False)
     y = np.linspace(pointcloud_range[1], pointcloud_range[4], feature_map.shape[3], endpoint=False) # added minus, because the y-axis was flipped
-    # z = np.linspace(pointcloud_range[2], pointcloud_range[5], feature_map.shape[2], endpoint=False)
     z = np.array([-5.])
 
     # Create Open3d Visualizer:
@@ -454,7 +454,7 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
     vis.create_window()
 
     vis.get_render_option().point_size = 2.5
-    vis.get_render_option().background_color = [1, 1, 1]
+    vis.get_render_option().background_color = [0,0,0]#[1, 1, 1]
 
     # plot the sample pc
     input_point_cloud = o3d.geometry.PointCloud()
@@ -472,11 +472,13 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
     vis.add_geometry(voxel_grid)
     vis.run()
     vis.destroy_window()
+    
 
 def drawPredBoxes(vis, pred_boxes):
-    vis, box3d_list = draw_box(vis, pred_boxes.cpu(), (1, 0, 0))
+    vis, box3d_list = draw_box(vis, pred_boxes.cpu(), (1, 1, 0))
     print('Number of Pred-Boxes: ', pred_boxes.shape[0])
     return vis, box3d_list
+
 
 def drawGtBoxes(vis, gt_boxes):
     for i in range(gt_boxes.shape[0]):
@@ -484,6 +486,7 @@ def drawGtBoxes(vis, gt_boxes):
         vis, box3d_list = draw_box(vis, gt_box.cpu(), (0, 0, 1))
     print('Number of GT-Boxes: ', gt_boxes.shape[0])
     return vis, box3d_list
+    
     
 def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None):
     box_colormap = [
