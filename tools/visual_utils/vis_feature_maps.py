@@ -554,6 +554,7 @@ def entropyOfFmaps(feature_map):
         Returns:
         ndarray: A 2D numpy array representing the normalized entropy over all feature maps
                  for each spatial location [y, x].
+        int: The number of bins used for histogram binning.
 
         Notes:
         - The function computes the entropy over feature maps, and it performs several pre-processing
@@ -570,7 +571,7 @@ def entropyOfFmaps(feature_map):
     if feature_map.max() == 0 and feature_map.min() == 0:
         return np.zeros(feature_map.shape[1:])
     feature_map_no_zeroes = feature_map[feature_map!=0]
-    ### Cut outliers and normalize
+    # Cut outliers and normalize
     lower_limit = np.percentile(feature_map_no_zeroes, 0.01)
     upper_limit = np.percentile(feature_map_no_zeroes, 99.99)
     del feature_map_no_zeroes
@@ -581,7 +582,8 @@ def entropyOfFmaps(feature_map):
     feature_map -= lower_limit
     feature_map = feature_map * 1 / (upper_limit-lower_limit) # set maximum value to 1
 
-    num_bins = feature_map.shape[0] // 10
+    # num_bins, fewer often work better
+    num_bins = max(3, feature_map.shape[0] // 20)
     print('num_bins: ', num_bins)
     bin_edges = np.linspace(0, 1, num_bins + 1)
     histograms = compute_histograms(feature_map, bin_edges, num_bins)
@@ -595,7 +597,7 @@ def entropyOfFmaps(feature_map):
     # normalize
     entropy -= entropy.min()
     entropy /= entropy.max()
-    return entropy
+    return entropy, num_bins
 
 
 def npVectorToO3dPoints(x:np.array, y:np.array=None, z:np.array=None):
