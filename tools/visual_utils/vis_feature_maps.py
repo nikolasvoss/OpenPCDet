@@ -374,9 +374,11 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
         vis.run()
         vis.destroy_window()
 
-def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_boxes=None):
+def visualizeFmapEntropy(feature_map, output_dir, samples_idx, input_points=None, pred_boxes=None, gt_boxes=None):
     if feature_map is None:
         raise ValueError("No feature map available. Check if the hook was triggered correctly.")
+    if not os.path.exists(output_dir):
+        raise FileNotFoundError(f"Output directory `{output_dir}` does not exist.")
     if input_points is not None:
         input_points = input_points[:, 1:4]  # Only use the xyz coordinates
 
@@ -437,7 +439,7 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
     #
     # # Create Open3d Visualizer:
     vis = o3d.visualization.Visualizer()
-    vis.create_window()
+    vis.create_window(window_name=f'Sample: {samples_idx}, Voxel Size: {voxel_size}, Entropy: x_shift={x_shift}, multiplier={multiplier}, num_bins={num_bins}')
 
     vis.get_render_option().point_size = 2.5
     vis.get_render_option().background_color = [0,0,0]#[1, 1, 1]
@@ -446,7 +448,7 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
     input_point_cloud = o3d.geometry.PointCloud()
     input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
     input_point_cloud.paint_uniform_color([0, 1, 0])  # green
-    vis.add_geometry(input_point_cloud)
+    # vis.add_geometry(input_point_cloud)
 
     # plot gt and pred boxes
     if pred_boxes is not None:
@@ -456,7 +458,12 @@ def visualizeFmapEntropy(feature_map, input_points=None, pred_boxes=None, gt_box
         vis, box3d_list = drawGtBoxes(vis, gt_boxes)
     
     vis.add_geometry(voxel_grid)
+
+    vis.get_view_control().set_zoom(0.5)
     vis.run()
+    # save the entropy image. add x_shift, multiplier and num_bins to the filename
+    vis.capture_screen_image(f'{output_dir}/entropy_sample{samples_idx}_xshift{x_shift}_multiplier{multiplier}_numbins{num_bins}.png')
+
     vis.destroy_window()
     
 
