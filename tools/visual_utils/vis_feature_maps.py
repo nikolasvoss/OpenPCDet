@@ -395,7 +395,10 @@ def visualizeFmapEntropy(feature_map, output_dir, samples_idx, input_points=None
     for i in range(feature_map.shape[2]):
         fmap_entropy[i] = entropyOfFmaps(feature_map[:, :, i, :, :].squeeze(0))
 
-    fmap_entropy = fmap_entropy.squeeze()
+    ############################################################
+    # Entropy Calculation
+    ############################################################
+    # feature_map should have the shape [batch_size, feature_maps, z, y, x]
 
     # sum remaining z-dimension to show only one plane
     if fmap_entropy.ndim == 3:
@@ -408,7 +411,9 @@ def visualizeFmapEntropy(feature_map, output_dir, samples_idx, input_points=None
     multiplier = 12
     fmap_entropy = 1 / (1 + np.exp(-multiplier * (fmap_entropy - x_shift)))
 
-
+    ############################################################
+    # Open3D Visualization
+    ############################################################
     # Point cloud range from nuscenes.yaml
     pointcloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
     # original voxel size from nuscenes.yaml
@@ -433,28 +438,27 @@ def visualizeFmapEntropy(feature_map, output_dir, samples_idx, input_points=None
     feature_pcd = o3d.geometry.PointCloud()
     feature_pcd.points = points
     feature_pcd.colors = colors
-    #
+
     # # WARNING: the voxels z-dimension is currently not correct
     voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(feature_pcd, voxel_size=voxel_size[0])
-    #
-    # # Create Open3d Visualizer:
+
+    # Create Open3d Visualizer:
     vis = o3d.visualization.Visualizer()
     vis.create_window(window_name=f'Sample: {samples_idx}, Voxel Size: {voxel_size}, Entropy: x_shift={x_shift}, multiplier={multiplier}, num_bins={num_bins}')
-
     vis.get_render_option().point_size = 2.5
-    vis.get_render_option().background_color = [0,0,0]#[1, 1, 1]
+    vis.get_render_option().background_color = [0, 0, 0]
 
     # plot the sample pc
-    input_point_cloud = o3d.geometry.PointCloud()
-    input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
-    input_point_cloud.paint_uniform_color([0, 1, 0])  # green
+    # input_point_cloud = o3d.geometry.PointCloud()
+    # input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
+    # input_point_cloud.paint_uniform_color([0, 1, 0])  # green
     # vis.add_geometry(input_point_cloud)
 
     # plot gt and pred boxes
     if pred_boxes is not None:
         vis, box3d_list = drawPredBoxes(vis, pred_boxes)
     if gt_boxes is not None:
-        gt_angles = gt_boxes[:, 6:8].reshape((-1, 2))
+        # gt_angles = gt_boxes[:, 6:8].reshape((-1, 2))
         vis, box3d_list = drawGtBoxes(vis, gt_boxes)
     
     vis.add_geometry(voxel_grid)
