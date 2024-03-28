@@ -390,26 +390,21 @@ def visualizeFmapEntropy(feature_map, output_dir, samples_idx, input_points=None
         feature_map = feature_map.unsqueeze(2) # Add a dummy z-dimension for compatibility
     feature_map = feature_map.cpu().numpy()
 
-    # create a loop for one entropyOfFmaps call for each z-plane. place them all in fmap_entropy with format [z, y, x]
-    fmap_entropy = np.zeros(feature_map.shape[2:])
-    for i in range(feature_map.shape[2]):
-        fmap_entropy[i] = entropyOfFmaps(feature_map[:, :, i, :, :].squeeze(0))
 
     ############################################################
     # Entropy Calculation
     ############################################################
     # feature_map should have the shape [batch_size, feature_maps, z, y, x]
 
-    # sum remaining z-dimension to show only one plane
-    if fmap_entropy.ndim == 3:
-        fmap_entropy = np.sum(fmap_entropy, axis=0)
-        fmap_entropy -= fmap_entropy.min() # this changes the entropy result for better visibility
-        fmap_entropy /= fmap_entropy.max()  # scale to 0-1
+    # 1. Sum over all z-planes
+    # 2. Calculate entropy over all channels for every single spatial location ("voxel")
+    fmap_entropy, num_bins = entropyOfFmaps(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
 
-    # sigmoid function
-    x_shift = 0.6
-    multiplier = 12
+    # sigmoid function to make the entropy more visible
+    x_shift = 0.7
+    multiplier = 15
     fmap_entropy = 1 / (1 + np.exp(-multiplier * (fmap_entropy - x_shift)))
+    fmap_entropy[fmap_entropy < 0.05] = 0
 
     ############################################################
     # Open3D Visualization
@@ -419,9 +414,9 @@ def visualizeFmapEntropy(feature_map, output_dir, samples_idx, input_points=None
     # original voxel size from nuscenes.yaml
     voxel_size = [0.1, 0.1, 0.2]
     # voxel size fitted to current feature map
-    voxel_size[0] = (pointcloud_range[3] - pointcloud_range[0]) / feature_map.shape[4]  # x
-    voxel_size[1] = (pointcloud_range[4] - pointcloud_range[1]) / feature_map.shape[3]  # y
-    voxel_size[2] = (pointcloud_range[5] - pointcloud_range[2]) / feature_map.shape[2]  # z
+    voxel_size[0] = (pointcloud_range[3] - pointcloud_range[0]) / feature_map.shape[-1]  # x
+    voxel_size[1] = (pointcloud_range[4] - pointcloud_range[1]) / feature_map.shape[-2]  # y
+    voxel_size[2] = (pointcloud_range[5] - pointcloud_range[2]) / feature_map.shape[-3]  # z
     print('Voxel size: ', voxel_size)
 
 
