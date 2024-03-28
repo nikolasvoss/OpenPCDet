@@ -45,30 +45,6 @@ def registerHookForLayer(model, layer_names):
             # Throw an exception if the layer is not found
             raise ValueError(f'Layer {layer_name} not found in the model.')
 
-def registerHookForLayers(model, layer_names):
-    """
-    Registers hooks for multiple specified layers in the model.
-    Calls registerHookForLayer in a loop for each layer.
-
-    Args:
-    model: The neural network model.
-    layer_names: A list of layer names to register hooks on.
-
-    Raises:
-    TypeError: If layer_names is not a list.
-    """
-    if not isinstance(layer_names, list):
-        raise TypeError('layer_names must be a list of strings.')
-
-    # Register a hook for each layer in layer_names
-    for layer_name in layer_names:
-        try:
-            registerHookForLayer(model, layer_name)
-            print(f"Hook registered for layer: {layer_name}")
-        except ValueError as e:
-            print(f"Error: {e}")
-        except TypeError as e:
-            print(f"Error: {e}")
 
 def printAllModelLayers(model):
     """Prints all layers of the model."""
