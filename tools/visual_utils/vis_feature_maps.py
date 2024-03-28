@@ -12,30 +12,38 @@ def extractFeatureMapHook(module, input, output):
     global feature_maps
     feature_maps = output
 
-def registerHookForLayer(model, layer_name):
-    """Registers a hook for one layer in the model. Call in loop for multiple layers.
+
+def registerHookForLayer(model, layer_names):
+    """Registers hooks for layers in the model.
 
     Args:
-    model: The neural network model to which the hook will be attached.
-    layer_name (str): The unique name of the layer within the model's scope.
+    model: The neural network model to which the hooks will be attached.
+    layer_names: A string or a list of strings with the unique names of the
+                 layers within the model's scope.
 
     Raises:
-    TypeError: If the `layer_name` is not a string.
-    ValueError: If the specified `layer_name` does not correspond to a layer in the model."""
-    if not isinstance(layer_name, str):
-        raise TypeError(f'layer_name must be a string, got {type(layer_name)} instead. Provide only one layer at a time.')
+    TypeError: If `layer_names` is neither a string nor a list of strings.
+    ValueError: If any specified `layer_name` does not correspond to a layer in the model."""
 
-    layer_exists = False
-    for name, module in model.named_modules():
-        if name == layer_name:
-            # Register a forward hook on the layer to capture feature maps
-            module.register_forward_hook(extractFeatureMapHook)
-            layer_exists = True
-            break
+    # Ensure layer_names is a list
+    if isinstance(layer_names, str):
+        layer_names = [layer_names]
+    elif not isinstance(layer_names, list) or not all(isinstance(name, str) for name in layer_names):
+        raise TypeError('layer_names must be a string or a list of strings.')
 
-    if not layer_exists:
-        # throw exception if the layer is not found
-        raise ValueError(f'Layer {layer_name} not found in the model.')
+    # Loop over all layer names to register hooks
+    for layer_name in layer_names:
+        layer_exists = False
+        for name, module in model.named_modules():
+            if name == layer_name:
+                # Register a forward hook on the layer to capture feature maps
+                module.register_forward_hook(extractFeatureMapHook)
+                layer_exists = True
+                break
+
+        if not layer_exists:
+            # Throw an exception if the layer is not found
+            raise ValueError(f'Layer {layer_name} not found in the model.')
 
 def registerHookForLayers(model, layer_names):
     """
