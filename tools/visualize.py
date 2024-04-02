@@ -17,14 +17,16 @@ from pcdet.datasets import build_dataloader
 from pcdet.models import build_network, load_data_to_gpu
 from pcdet.utils import common_utils
 
+
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
+
     parser.add_argument('--cfg_file', type=str, default='/home/niko/Documents/sicherung_trainings/second_2_240315/cbgs_second_multihead.yaml', help='specify the config for training')
+    parser.add_argument('--ckpt', type=str, default='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth', help='checkpoint to start from')
 
     parser.add_argument('--batch_size', type=int, default=1, required=False, help='batch size for training')
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
-    parser.add_argument('--ckpt', type=str, default='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth', help='checkpoint to start from')
     parser.add_argument('--pretrained_model', type=str, help='pretrained_model', default=None)
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
@@ -55,6 +57,14 @@ def parse_config():
 
 def main():
     args, cfg = parse_config()
+
+    second_s = False
+    if second_s:
+        args.cfg_file = '/home/niko/Documents/sicherung_trainings/second_s_1_240308/cbgs_second_S_multihead.yaml'
+        args.ckpt ='/home/niko/Documents/sicherung_trainings/second_s_1_240308/checkpoint_epoch_15.pth'
+    else:
+        args.cfg_file = '/home/niko/Documents/sicherung_trainings/second_2_240315/cbgs_second_multihead.yaml'
+        args.ckpt ='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
 
     if args.infer_time:
         os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -107,15 +117,20 @@ def main():
 
     # layer names can be printed with
     visfm.printAllModelLayers(model)
-    # layer_name = "backbone_3d.conv1.0.conv2"  # Replace with the layer you want to visualize
-    layer_name = "backbone_2d.blocks.1.18"
-    samples_idx = [200]  # Index of sample to visualize
+    # layer_name = "backbone_3d.conv1.1.conv1"  # Replace with the layer you want to visualize
+    # layer_name = "backbone_3d.conv3.1.conv1"
+    # layer_name = "backbone_3d.conv_out.0"
+    # layer_name = "backbone_2d.blocks.0.7"
+    layer_name = "dense_head.shared_conv.2"
+    samples_idx = [190]  # Index of sample to visualize
     batch_idx = 0
     # fmap_idx = list(range(6, 30)) # Index of the feature map to visualize
     fmap_idx = 8
-
     z_plane_idx = 25  # Index of the z-plane to visualize from the 3D feature map. Only used in 2d vis
-    output_dir = f'/home/niko/OpenPCDet/feature_map_saves/second/{layer_name}/'
+    if second_s:
+        output_dir = f'/home/niko/OpenPCDet/feature_map_saves/second_S/{layer_name}/'
+    else:
+        output_dir = f'/home/niko/OpenPCDet/feature_map_saves/second/{layer_name}/'
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
     
@@ -135,17 +150,17 @@ def main():
             pred_dicts, ret_dict = model.forward(input_dict)
 
         # Visualize the feature map
-        # visfm.visualizeFeatureMap(visfm.feature_maps, output_dir, batch_idx, fmap_idx, z_plane_idx, no_negative_values=True)
+        visfm.visualizeFeatureMap(visfm.feature_maps, output_dir, batch_idx, fmap_idx, z_plane_idx, no_negative_values=True)
         # visfm.visualizeFeatureMap3d(visfm.feature_maps, output_dir, batch_idx, fmap_idx, input_dict['points'],
         #                              same_plot=True)
         # visfm.visualizeFeatureMap3dO3d(visfm.feature_maps, output_dir, batch_idx, fmap_idx, input_dict['points'],
         #                              same_plot=True,
         #                              gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
         #                              pred_boxes=pred_dicts[0]['pred_boxes'])
-        visfm.visualizeFmapEntropy(visfm.feature_maps,
-                                   input_dict['points'],
-                                   gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
-                                   pred_boxes=pred_dicts[0]['pred_boxes'])
+        # visfm.visualizeFmapEntropy(visfm.feature_maps, output_dir, i,
+        #                            input_dict['points'],
+        #                            gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
+        #                            pred_boxes=pred_dicts[0]['pred_boxes'])
 
 if __name__ == '__main__':
     main()
