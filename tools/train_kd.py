@@ -420,7 +420,7 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
         with torch.cuda.amp.autocast(enabled=use_amp):
             loss, tb_dict, disp_dict = model_func(model, batch)
 
-        kd_loss = fmapKlLoss(visfm.feature_maps[1], visfm.feature_maps[0])
+        kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
         visfm.feature_maps = None
         loss = gt_loss_weight * loss + kd_loss_weight * kd_loss
         scaler.scale(loss).backward()
@@ -551,6 +551,18 @@ def eval_epoch(model, epoch, cfg, args, output_dir, logger, dist_train, ckpt_pat
     # Release memory after evaluation
     del test_loader, test_set, sampler
     gc.collect()
+
+
+def fmapKdLoss(fmap_student, fmap_teacher):
+    """Calculates the KL divergence between the feature maps of the student and teacher networks.
+    Firstly the different number of channels must be handled
+    """
+    fmap_student = fmap_student.dense()
+    fmap_teacher = fmap_teacher.dense()
+
+    # loss = torch.sum((fmap_student-fmap_teacher)**2, dim=1)     # sum over all channels
+    loss = nn.MSELoss(reduction='mean')
+    return loss(fmap_student, fmap_teacher)
 
 
 if __name__ == '__main__':
