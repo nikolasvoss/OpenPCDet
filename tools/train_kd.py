@@ -412,7 +412,7 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
                 _, _ = model_teacher(batch)
                 # data from hooked layer is stored in visfm.feature_maps
                 # TODO: what is unknown_data_teacher?
-                fmap_teacher = visfm.feature_maps
+
 
         model.train()
         optimizer.zero_grad()
@@ -420,8 +420,8 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
         with torch.cuda.amp.autocast(enabled=use_amp):
             loss, tb_dict, disp_dict = model_func(model, batch)
 
-        fmap_student = visfm.feature_maps
-        kd_loss = fmapKlLoss(fmap_student, fmap_teacher)
+        kd_loss = fmapKlLoss(visfm.feature_maps[1], visfm.feature_maps[0])
+        visfm.feature_maps = None
         loss = gt_loss_weight * loss + kd_loss_weight * kd_loss
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
