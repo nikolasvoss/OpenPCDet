@@ -5,12 +5,17 @@ import matplotlib.pyplot as plt
 import open3d as o3d
 from numba import jit
 
-global feature_maps
+feature_maps = None
+
 
 def extractFeatureMapHook(module, input, output):
     """Extracts the output of the layer for visualization."""
     global feature_maps
-    feature_maps = output
+    # when feature_maps is not empty, add output to feature_maps as a list
+    if feature_maps is not None:
+        feature_maps.append(output)
+    else:
+        feature_maps = [output]
 
 
 def registerHookForLayer(model, layer_names):
