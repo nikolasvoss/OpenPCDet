@@ -391,8 +391,17 @@ class VoxelResBackBone8x(nn.Module):
             # [200, 150, 5] -> [200, 150, 2]
             spconv.SparseConv3d(num_filters[4], num_filters[5], (3, 1, 1), stride=(2, 1, 1), padding=last_pad,
                                 bias=False, indice_key='spconv_down2'),
-            norm_fn(num_filters[5])
-        )
+            norm_fn(num_filters[5]))
+
+        if int(model_cfg.WIDTH) != 1: # if student
+            # the feature adaptation layer is used to adapt the feature dimension of the student to the teacher
+            self.feature_adapt = spconv.SparseSequential(
+                spconv.SparseConv3d(num_filters[5], 128, 1, stride=1, padding=0),
+                nn.ReLU())
+            self.feature_adapt[0].bias.requires_grad = False
+            self.feature_adapt[0].weight.requires_grad = False
+            self.feature_adapt[0].bias.data.fill_(0.)
+            self.feature_adapt[0].weight.data.fill_(1.)
 
         self.final_act = act_fn()
 
@@ -433,6 +442,9 @@ class VoxelResBackBone8x(nn.Module):
         # for detection head
         # [200, 176, 5] -> [200, 176, 2]
         out = self.conv_out(x_conv4)
+        # if student, insert feature adaptation layer
+        if getattr(self, 'feature_adapt', None):
+            feature_adapt = self.feature_adapt(self.conv_out[0](x_conv4))
 
         # TODO: commented because clone_sp_tensor need modification of spconv_utils.py
         # if getattr(self, 'is_teacher', None):
