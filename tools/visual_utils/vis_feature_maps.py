@@ -56,6 +56,7 @@ def printAllModelLayers(model):
     for name, module in model.named_modules():
         print(name)
 
+
 def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_indices=None, z_plane_indices=None, no_negative_values=False):
     """Visualizes feature maps as slices in the z-plane using matplotlib.
     The plots are saved as images in the specified output directory.
@@ -122,7 +123,6 @@ def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_indices=None,
     for idx in z_plane_indices:
         if not (0 <= idx < num_z_planes):
             raise ValueError(f"z_plane_idx {idx} is out of bounds. It must be between 0 and {num_z_planes - 1}")
-
 
     visibility_factor = 2  # multiply all values for better visibility
 
@@ -241,7 +241,7 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
         vis.create_window(window_name=f'Voxel Size: {voxel_size}')
 
         vis.get_render_option().point_size = 2.5
-        vis.get_render_option().background_color = [1, 1, 1] #[0.25, 0.25, 0.25]
+        vis.get_render_option().background_color = [1, 1, 1]    # [0.25, 0.25, 0.25]
 
         # Input Points Visualization
         if input_points is not None and same_plot:
@@ -269,6 +269,7 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
             vis.add_geometry(voxel_grid)
         vis.run()
         vis.destroy_window()
+
 
 def visualizeFmapEntropy(feature_map, output_dir, samples_idx, input_points=None, pred_boxes=None, gt_boxes=None):
     if feature_map is None:
@@ -397,6 +398,7 @@ def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None):
 
     return vis, box3d_list
 
+
 def translate_boxes_to_open3d_instance(gt_boxes):
     """
              4-------- 6
@@ -424,6 +426,7 @@ def translate_boxes_to_open3d_instance(gt_boxes):
 
     return line_set, box3d
 
+
 def isSingleIntOrListOfInts(value):
     # First, check if the value is a single integer
     if isinstance(value, int):
@@ -434,6 +437,7 @@ def isSingleIntOrListOfInts(value):
         return all(isinstance(item, int) for item in value)
     # If it's neither an integer nor a list of integers, return False
     return False
+
 
 def entropyOfFmaps(feature_map):
     """
@@ -532,6 +536,7 @@ def compute_histograms(feature_map, bin_edges, num_bins):
         for j in range(w):
             histograms[:, i, j], _ = np.histogram(feature_map[:, i, j], bins=bin_edges)
     return histograms
+
 
 def plotHistAndBoxplot(fmap_entropy, bins=100):
     fig, ax = plt.subplots(1, 2, figsize=(10, 5))
