@@ -55,6 +55,29 @@ def parse_config():
 
     return args, cfg
 
+def getTopNVoxels(input_dict, N):
+    """This can be used to filter voxels based on the importance score
+    like in PointDistiller
+    Inputs:
+        input_dict: dict containing the voxel data
+        N: number of top voxels to keep
+    Outputs:
+        voxels: top N voxels
+        voxel_coords: top N voxel coordinates
+        importance_score: top N importance scores
+        """
+    importance_score = input_dict['voxel_num_points']
+    # find N indices with the highest value and save them to importance_score.
+    importance_idx = np.argpartition(importance_score, -N)[-N:]
+    importance_score = importance_score[importance_idx]
+    # top N voxels
+    voxels = input_dict['voxels'][importance_idx, :, :]
+    voxel_coords = input_dict['voxel_coords'][importance_idx, :]
+    return voxels, voxel_coords, importance_score
+
+
+
+
 def main():
     args, cfg = parse_config()
 
