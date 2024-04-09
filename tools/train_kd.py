@@ -123,23 +123,8 @@ def init(args, cfg):
 def main():
     args, cfg = parse_config()
 
-    small_model = True # true for kd training
-    kd_train = True
-
-    if small_model:
-        args.cfg_file = '/home/niko/Documents/sicherung_trainings/second_s_1_240308/cbgs_second_S_multihead.yaml'
-        args.ckpt = '/home/niko/Documents/sicherung_trainings/second_s_1_240308/checkpoint_epoch_15.pth'
-    else:
-        args.cfg_file = '/home/niko/Documents/sicherung_trainings/second_2_240315/cbgs_second_multihead.yaml'
-        args.ckpt = '/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
-
     output_dir, ckpt_dir, logger, tb_log, dist_train, total_gpus = init(args, cfg)
 
-    if kd_train:
-        args_teacher, cfg_teacher = parse_config()
-        args_teacher.cfg_file = '/home/niko/Documents/sicherung_trainings/second_2_240315/cbgs_second_multihead.yaml'
-        args_teacher.ckpt = '/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
-        init(args_teacher, cfg_teacher)
 
 
     # log to file
@@ -173,11 +158,17 @@ def main():
         seed=666 if args.fix_random_seed else None
     )
 
+    ###########################################################################
+    # build student model
+    ###########################################################################
+
     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
     if args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.cuda()
-
+    # add feature map hook
+    visfm.registerHookForLayer(model, layer_name_student)
+    logger.info('Created student hook for layer: %s' % layer_name_student)
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 
     # load checkpoint if it is possible
@@ -217,19 +208,23 @@ def main():
         last_epoch=last_epoch, optim_cfg=cfg.OPTIMIZATION
     )
 
-    if kd_train:
-        model_teacher = build_network(model_cfg=cfg_teacher.MODEL, num_class=len(cfg_teacher.CLASS_NAMES), dataset=train_set)
-        model_teacher.load_params_from_file(filename=args_teacher.ckpt, to_cpu=dist_train,
-                                             pre_trained_path=args_teacher.pretrained_model)
-        model_teacher.cuda()
-        model_teacher.eval()
-        logger.info(
-            f'----------- Model Teacher {cfg_teacher.MODEL.NAME} created, param count: {sum([m.numel() for m in model_teacher.parameters()])} -----------')
-        logger.info(model_teacher)
+    ###########################################################################
+    # build teacher model
+    ###########################################################################
+    model_teacher = build_network(model_cfg=cfg.MODEL_TEACHER, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
+    model_teacher.load_params_from_file(filename=pretrained_model_teacher, to_cpu=dist_train, logger=logger)
+    model_teacher.cuda()
+    model_teacher.eval()
+    logger.info(
+        f'----------- Model Teacher {cfg.MODEL_TEACHER.NAME} created, param count: {sum([m.numel() for m in model_teacher.parameters()])} -----------')
+    logger.info(model_teacher)
+    # add feature map hook
+    visfm.registerHookForLayer(model_teacher, layer_name_teacher)
+    logger.info('Created teacher hook for layer: %s' % layer_name_teacher)
 
-        # -----------------------start training---------------------------
-        logger.info('**********************Start training %s/%s(%s)**********************'
-                    % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
+    # -----------------------start training---------------------------
+    logger.info('**********************Start training %s/%s(%s)**********************'
+                % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
 
         train_model_w_eval(
             model,
@@ -397,4 +392,10 @@ def eval_epoch(model, epoch, cfg, args, output_dir, logger, dist_train, ckpt_pat
 
 
 if __name__ == '__main__':
+    pretrained_model_teacher = '/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
+    # layer_name = ["backbone_3d.conv_out.0", "backbone_2d.blocks.0.7"]
+    layer_name_teacher = "backbone_3d.conv_out0.0"
+    layer_name_student = "backbone_3d.feature_adapt"
+    kd_loss_weight = 0.5
+    gt_loss_weight = 0.5
     main()
