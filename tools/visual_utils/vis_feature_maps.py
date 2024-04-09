@@ -492,19 +492,20 @@ def entropyOfFmaps(feature_map):
 
 
 def npVectorToO3dPoints(x:np.array, y:np.array=None, z:np.array=None):
-    # Converts numpy arrays to Open3D Vector3dVector.
-    # If y or z are not provided, they are set to 0.
-    # Expects:
-    # x: np.array of shape (N,)
-    # y: np.array of shape (M,) or None
-    # z: np.array of shape (K,) or None
-    # Returns:
-    # o3d.utility.Vector3dVector of shape (N*M*K, 3)
-    # usage:
-    # x = np.linspace(-3, 3, 401)
-    # y = ...
-    # pcd = o3d.geometry.PointCloud()
-    # pcd.points = npVectorToO3dPoints(x, y, z)
+    """Converts numpy arrays to Open3D Vector3dVector.
+    If y or z are not provided, they are set to 0.
+    Expects:
+        x: np.array of shape (N,)
+        y: np.array of shape (M,) or None
+        z: np.array of shape (K,) or None
+    Returns:
+        o3d.utility.Vector3dVector of shape (N*M*K, 3)
+    usage:
+    x = np.linspace(-3, 3, 401)
+    y = ...
+    pcd = o3d.geometry.PointCloud()
+    pcd.points = npVectorToO3dPoints(x, y, z)
+    """
     if y is None:
         y = np.zeros_like(x)
     if z is None:
