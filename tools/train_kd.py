@@ -28,7 +28,7 @@ import visual_utils.vis_feature_maps as visfm
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str,
-                        default='/home/niko/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_second_multihead.yaml',
+                        default='/home/niko/Documents/sicherung_trainings/second_s_1_240308/cbgs_second_S_w_teacher_multihead.yaml',
                         help='specify the config for training')
 
     parser.add_argument('--batch_size', type=int, default=8, required=False, help='batch size for training')
@@ -37,7 +37,7 @@ def parse_config():
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
     parser.add_argument('--pretrained_model', type=str, help='pretrained_model',
-                        default=None)  # '/home/niko/Documents/sicherung_trainings/second_1_240308/checkpoint_epoch_15.pth')
+                        default='/home/niko/Documents/sicherung_trainings/second_s_1_240308/checkpoint_epoch_15.pth')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--sync_bn', action='store_true', default=False, help='whether to use sync bn')
@@ -205,7 +205,7 @@ def main():
         model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
     logger.info(
         f'----------- Model {cfg.MODEL.NAME} created, param count: {sum([m.numel() for m in model.parameters()])} -----------')
-    logger.info(model)
+    # logger.info(model)
 
     lr_scheduler, lr_warmup_scheduler = build_scheduler(
         optimizer, total_iters_each_epoch=len(train_loader), total_epochs=args.epochs,
@@ -221,7 +221,7 @@ def main():
     model_teacher.eval()
     logger.info(
         f'----------- Model Teacher {cfg.MODEL_TEACHER.NAME} created, param count: {sum([m.numel() for m in model_teacher.parameters()])} -----------')
-    logger.info(model_teacher)
+    # logger.info(model_teacher)
     # add feature map hook
     visfm.registerHookForLayer(model_teacher, layer_name_teacher)
     logger.info('Created teacher hook for layer: %s' % layer_name_teacher)
@@ -409,7 +409,8 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
         with torch.no_grad():
             with torch.cuda.amp.autocast(enabled=use_amp):
                 load_data_to_gpu(batch)
-                pred_teacher, unknown_data_teacher = model_teacher(batch)
+                _, _ = model_teacher(batch)
+                # data from hooked layer is stored in visfm.feature_maps
                 # TODO: what is unknown_data_teacher?
                 fmap_teacher = visfm.feature_maps
 
@@ -555,7 +556,8 @@ def eval_epoch(model, epoch, cfg, args, output_dir, logger, dist_train, ckpt_pat
 if __name__ == '__main__':
     pretrained_model_teacher = '/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
     # layer_name = ["backbone_3d.conv_out.0", "backbone_2d.blocks.0.7"]
-    layer_name_teacher = "backbone_3d.conv_out0.0"
+    layer_name_teacher = "backbone_3d.conv_out.0"
+    # layer_name_student = "backbone_3d.conv_out.0"
     layer_name_student = "backbone_3d.feature_adapt"
     kd_loss_weight = 0.5
     gt_loss_weight = 0.5
