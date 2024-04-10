@@ -571,14 +571,19 @@ def fmapKdLoss(fmap_student, fmap_teacher):
     loss = nn.MSELoss(reduction='mean')
     return loss(fmap_student, fmap_teacher)
 
+
 def fmapEntropyLoss(fmap_student, fmap_teacher):
     """Calculates the entropy of the feature maps of the student network
     """
     fmap_student = fmap_student.dense()
     fmap_teacher = fmap_teacher.dense()
+    entr_student = torch.zeros([fmap_student.shape[0], fmap_student.shape[-2], fmap_student.shape[-1]])
+    entr_teacher = torch.zeros([fmap_teacher.shape[0], fmap_teacher.shape[-2], fmap_teacher.shape[-1]])
+    # loop over the batch and calculate the entropy of each feature map
+    for i in range(fmap_student.shape[0]):
+        entr_student[i], _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_student[i], axis=-3, keepdims=False))
+        entr_teacher[i], _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_teacher[i], axis=-3, keepdims=False))
 
-    entr_student = visfm.entropyOfFmaps(fmap_student)
-    entr_teacher = visfm.entropyOfFmaps(fmap_teacher)
     loss = nn.MSELoss(reduction='mean')
     return loss(entr_student, entr_teacher)
 
