@@ -564,6 +564,17 @@ def fmapKdLoss(fmap_student, fmap_teacher):
     loss = nn.MSELoss(reduction='mean')
     return loss(fmap_student, fmap_teacher)
 
+def fmapEntropyLoss(fmap_student, fmap_teacher):
+    """Calculates the entropy of the feature maps of the student network
+    """
+    fmap_student = fmap_student.dense()
+    fmap_teacher = fmap_teacher.dense()
+
+    entr_student = visfm.entropyOfFmaps(fmap_student)
+    entr_teacher = visfm.entropyOfFmaps(fmap_teacher)
+    loss = nn.MSELoss(reduction='mean')
+    return loss(entr_student, entr_teacher)
+
 
 if __name__ == '__main__':
     pretrained_model_teacher = '/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
