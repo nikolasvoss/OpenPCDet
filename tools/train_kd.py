@@ -420,9 +420,16 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
         with torch.cuda.amp.autocast(enabled=use_amp):
             loss, tb_dict, disp_dict = model_func(model, batch)
 
+        start_time = time.time()
+
         kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
         visfm.feature_maps = None
         loss = gt_loss_weight * loss + kd_loss_weight * kd_loss
+
+        end_time = time.time()  # end time after kd_loss calculation
+        kd_loss_time = end_time - start_time  # time taken to calculate kd_loss
+        print(f"Time taken for kd_loss calculation: {kd_loss_time} seconds")
+
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
         clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
