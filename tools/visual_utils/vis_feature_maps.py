@@ -463,7 +463,8 @@ def entropyOfFmaps(feature_map):
         - The output entropy is normalized to the range [0, 1].
         - The function handles the case of an empty feature map by returning zeros.
         - An epsilon value 'e' is added to probabilities to avoid logarithm of zero errors.
-        - Binning of feature map values is done using 100 equal-width bins between 0 and 1.
+        - Binning of feature map values is done using a number of bins dependent on the number of channels
+         and places them between 0 and 1.
         """
 
     # Expects a feature map tensor of shape [feature_maps, y, x]
@@ -486,7 +487,7 @@ def entropyOfFmaps(feature_map):
     num_bins = max(3, feature_map.shape[0] // 20)
     print('num_bins: ', num_bins)
     bin_edges = np.linspace(0, 1, num_bins + 1)
-    histograms = compute_histograms(feature_map, bin_edges, num_bins)
+    histograms = computeHistograms(feature_map, bin_edges, num_bins)
     probabilities = histograms / histograms.sum(axis=0, keepdims=True)
 
     # Make sure we don't have any zeros in probabilities by adding a small constant.
@@ -497,6 +498,65 @@ def entropyOfFmaps(feature_map):
     # normalize
     entropy -= entropy.min()
     entropy /= entropy.max()
+    return entropy, num_bins
+
+
+def entropyOfFmapsTorch(feature_map):
+    """
+    Compute the normalized entropy of a feature map tensor.
+
+    This function takes a feature map tensor with dimensions [feature_maps, y, x]
+    and calculates its entropy after applying outlier removal, normalization, and
+    equal-width binning for probability estimation.
+
+    Parameters:
+    feature_map (torch.Tensor): A torch tensor representing the feature map tensor with shape
+                                [feature_maps, y, x].
+
+    Returns:
+    torch.Tensor: A 2D torch tensor representing the normalized entropy over all feature maps
+                  for each spatial location [y, x].
+    int: The number of bins used for histogram binning.
+    """
+
+    # Expects a feature map tensor of shape [feature_maps, y, x]
+    # Abort if the feature map is empty
+    if feature_map.max() == 0 and feature_map.min() == 0:
+        return torch.zeros(feature_map.shape[1:], device=feature_map.device)
+
+    feature_map_no_zeroes = feature_map[feature_map != 0]
+
+    # Cut outliers and normalize
+    lower_limit = torch.quantile(feature_map_no_zeroes, 0.01)
+    upper_limit = torch.quantile(feature_map_no_zeroes, 0.99)
+    del feature_map_no_zeroes
+
+    # set all values below or above limits to limits
+    feature_map = torch.clamp(feature_map, min=lower_limit, max=upper_limit)
+
+    # normalize
+    feature_map -= lower_limit
+    feature_map /= (upper_limit - lower_limit)  # set maximum value to 1
+
+    # num_bins, fewer often work better
+    num_bins = max(3, feature_map.shape[0] // 20)
+    print('num_bins: ', num_bins)
+
+    # Compute histograms
+    bin_edges = torch.linspace(0, 1, num_bins + 1)
+    histograms = computeHistogramsTorch(feature_map, bin_edges, num_bins)
+    probabilities = histograms / histograms.sum(dim=0, keepdim=True)
+
+    # Make sure we don't have any zeros in probabilities by adding a small constant.
+    e = 1e-10
+    probabilities += e
+
+    entropy = -torch.sum(probabilities * torch.log(probabilities), dim=0)
+
+    # normalize
+    entropy -= entropy.min()
+    entropy /= entropy.max()
+
     return entropy, num_bins
 
 
@@ -529,12 +589,21 @@ def npVectorToO3dPoints(x:np.array, y:np.array=None, z:np.array=None):
 
 
 @jit(nopython=True)
-def compute_histograms(feature_map, bin_edges, num_bins):
+def computeHistograms(feature_map, bin_edges, num_bins):
     h, w = feature_map.shape[1], feature_map.shape[2]
     histograms = np.zeros((num_bins, h, w), dtype=np.uint32)
     for i in range(h):
         for j in range(w):
             histograms[:, i, j], _ = np.histogram(feature_map[:, i, j], bins=bin_edges)
+    return histograms
+
+
+def computeHistogramsTorch(feature_map, bin_edges, num_bins):
+    h, w = feature_map.shape[1], feature_map.shape[2]
+    histograms = torch.zeros((num_bins, h, w), dtype=torch.int32, device=feature_map.device)
+    for i in range(h):
+        for j in range(w):
+            histograms[:, i, j] = torch.histc(feature_map[:, i, j], bins=num_bins, min=bin_edges[0], max=bin_edges[-1])
     return histograms
 
 
