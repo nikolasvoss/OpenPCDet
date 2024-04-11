@@ -581,12 +581,10 @@ def fmapEntropyLoss(fmap_student, fmap_teacher):
     """
     fmap_student = fmap_student.dense()
     fmap_teacher = fmap_teacher.dense()
-    entr_student = torch.zeros([fmap_student.shape[0], fmap_student.shape[-2], fmap_student.shape[-1]])
-    entr_teacher = torch.zeros([fmap_teacher.shape[0], fmap_teacher.shape[-2], fmap_teacher.shape[-1]])
-    # loop over the batch and calculate the entropy of each feature map
-    for i in range(fmap_student.shape[0]):
-        entr_student[i], _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_student[i], axis=-3, keepdims=False))
-        entr_teacher[i], _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_teacher[i], axis=-3, keepdims=False))
+
+    # sum over z-axis
+    entr_student, _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_student, axis=-3, keepdims=False))
+    entr_teacher, _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_teacher, axis=-3, keepdims=False))
 
     loss = nn.MSELoss(reduction='mean')
     return loss(entr_student, entr_teacher)
@@ -598,6 +596,6 @@ if __name__ == '__main__':
     layer_name_teacher = "backbone_3d.conv_out.0"
     # layer_name_student = "backbone_3d.conv_out.0"
     layer_name_student = "backbone_3d.feature_adapt"
-    kd_loss_weight = 0.5
+    kd_loss_weight = 5
     gt_loss_weight = 0.5
     main()
