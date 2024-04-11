@@ -594,12 +594,19 @@ def computeHistograms(feature_map, bin_edges, num_bins):
     return histograms
 
 
+
 def computeHistogramsTorch(feature_map, bin_edges, num_bins):
-    h, w = feature_map.shape[1], feature_map.shape[2]
-    histograms = torch.zeros((num_bins, h, w), dtype=torch.int32, device=feature_map.device)
-    for i in range(h):
-        for j in range(w):
-            histograms[:, i, j] = torch.histc(feature_map[:, i, j], bins=num_bins, min=bin_edges[0], max=bin_edges[-1])
+    # find all values that are in the bins bin_edges[n] <= x < bin_edges[n+1] and count them.
+    batch, h, w = feature_map.shape[0], feature_map.shape[1], feature_map.shape[2]
+    histograms = torch.zeros((batch, num_bins, h, w), dtype=torch.int32, device=feature_map.device)
+    for bat in range(feature_map.shape[0]):
+        for bin in range(num_bins):
+            histograms[bat, bin] = torch.sum(
+                (feature_map[bat] >= bin_edges[bin]) &
+                (feature_map[bat] < bin_edges[bin+1]),
+                dim=0)
+        # Handle the last bin inclusive of the upper edge
+        histograms[-1] = (feature_map[bat] >= bin_edges[-2]).sum(dim=0)
     return histograms
 
 
