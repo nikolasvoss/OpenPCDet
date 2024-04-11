@@ -511,7 +511,7 @@ def entropyOfFmapsTorch(feature_map):
 
     Parameters:
     feature_map (torch.Tensor): A torch tensor representing the feature map tensor with shape
-                                [feature_maps, y, x].
+                                [batch_size, feature_maps, y, x].
 
     Returns:
     torch.Tensor: A 2D torch tensor representing the normalized entropy over all feature maps
@@ -522,14 +522,12 @@ def entropyOfFmapsTorch(feature_map):
     # Expects a feature map tensor of shape [feature_maps, y, x]
     # Abort if the feature map is empty
     if feature_map.max() == 0 and feature_map.min() == 0:
-        return torch.zeros(feature_map.shape[1:], device=feature_map.device)
+        # return shape is [y, x]
+        return torch.zeros([feature_map.shape[0], feature_map.shape[2], feature_map.shape[3]], device=feature_map.device), 0
 
-    feature_map_no_zeroes = feature_map[feature_map != 0]
-
-    # Cut outliers and normalize
-    lower_limit = torch.quantile(feature_map_no_zeroes, 0.01)
-    upper_limit = torch.quantile(feature_map_no_zeroes, 0.99)
-    del feature_map_no_zeroes
+    # Cut outliers and normalize. Remove zeros first
+    lower_limit = torch.quantile(feature_map[feature_map != 0], 0.01)
+    upper_limit = torch.quantile(feature_map[feature_map != 0], 0.99)
 
     # set all values below or above limits to limits
     feature_map = torch.clamp(feature_map, min=lower_limit, max=upper_limit)
@@ -540,18 +538,16 @@ def entropyOfFmapsTorch(feature_map):
 
     # num_bins, fewer often work better
     num_bins = max(3, feature_map.shape[0] // 20)
-    print('num_bins: ', num_bins)
+    # print('num_bins: ', num_bins)
 
     # Compute histograms
     bin_edges = torch.linspace(0, 1, num_bins + 1)
-    histograms = computeHistogramsTorch(feature_map, bin_edges, num_bins)
-    probabilities = histograms / histograms.sum(dim=0, keepdim=True)
+    histograms = computeHistogramsTorch(feature_map, bin_edges, num_bins).float()
+    # add a small constant to avoid division by zero
+    # add a small constant to avoid probabilities = 0
+    probabilities = (histograms / (histograms.sum(dim=1, keepdim=True) + 1e-10)).clamp(min=1e-10)
 
-    # Make sure we don't have any zeros in probabilities by adding a small constant.
-    e = 1e-10
-    probabilities += e
-
-    entropy = -torch.sum(probabilities * torch.log(probabilities), dim=0)
+    entropy = -torch.sum(probabilities * torch.log(probabilities), dim=1)
 
     # normalize
     entropy -= entropy.min()
