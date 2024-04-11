@@ -411,24 +411,28 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
                 load_data_to_gpu(batch)
                 _, _ = model_teacher(batch)
                 # data from hooked layer is stored in visfm.feature_maps
-                # TODO: what is unknown_data_teacher?
-
 
         model.train()
         optimizer.zero_grad()
 
         with torch.cuda.amp.autocast(enabled=use_amp):
-            loss, tb_dict, disp_dict = model_func(model, batch)
+            gt_loss, tb_dict, disp_dict = model_func(model, batch)
 
+        ####################################################
+        # Loss calculation
+        ####################################################
         start_time = time.time()
 
-        kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
+        kd_loss = fmapEntropyLoss(visfm.feature_maps[1], visfm.feature_maps[0])
+        # kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
         visfm.feature_maps = None
-        loss = gt_loss_weight * loss + kd_loss_weight * kd_loss
+
+        loss = gt_loss_weight * gt_loss + kd_loss_weight * kd_loss
 
         end_time = time.time()  # end time after kd_loss calculation
         kd_loss_time = end_time - start_time  # time taken to calculate kd_loss
-        print(f"Time taken for kd_loss calculation: {kd_loss_time} seconds")
+        #print(f"Time taken for kd_loss calculation: {kd_loss_time} seconds.")
+        #print(f"Loss: {gt_loss_weight:.2f} * {gt_loss:.4f} + {kd_loss_weight:.2f} * {kd_loss:.4f} = {loss:.4f}")
 
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
