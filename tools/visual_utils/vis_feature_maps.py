@@ -501,11 +501,11 @@ def entropyOfFmaps(feature_map):
     return entropy, num_bins
 
 
-def entropyOfFmapsTorch(feature_map):
+def entropyOfFmapsTorch(feature_map, num_bins=None):
     """
     Compute the normalized entropy of a feature map tensor.
 
-    This function takes a feature map tensor with dimensions [feature_maps, y, x]
+    This function takes a feature map tensor with dimensions [batch_size, feature_maps, y, x]
     and calculates its entropy after applying outlier removal, normalization, and
     equal-width binning for probability estimation.
 
@@ -515,7 +515,7 @@ def entropyOfFmapsTorch(feature_map):
 
     Returns:
     torch.Tensor: A 2D torch tensor representing the normalized entropy over all feature maps
-                  for each spatial location [y, x].
+                  for each spatial location [batch_size, y, x].
     int: The number of bins used for histogram binning.
     """
 
@@ -537,7 +537,8 @@ def entropyOfFmapsTorch(feature_map):
     feature_map = torch.div(feature_map, (upper_limit - lower_limit))  # set maximum value to 1
 
     # num_bins, fewer often work better
-    num_bins = max(3, feature_map.shape[0] // 20)
+    if num_bins is None:
+        num_bins = max(3, feature_map.shape[0] // 20)
     # print('num_bins: ', num_bins)
 
     # Compute histograms
@@ -545,13 +546,13 @@ def entropyOfFmapsTorch(feature_map):
     histograms = computeHistogramsTorch(feature_map, bin_edges, num_bins).float()
     # add a small constant to avoid division by zero
     # add a small constant to avoid probabilities = 0
-    probabilities = (histograms / (histograms.sum(dim=1, keepdim=True) + 1e-10)).clamp(min=1e-10)
+    probabilities = torch.div(histograms, (histograms.sum(dim=1, keepdim=True) + 1e-10)).clamp(min=1e-10)
 
     entropy = -torch.sum(probabilities * torch.log(probabilities), dim=1)
 
     # normalize
     entropy -= entropy.min()
-    entropy /= entropy.max()
+    entropy = torch.div(entropy, entropy.max())
 
     return entropy, num_bins
 
