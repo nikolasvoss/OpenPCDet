@@ -30,7 +30,7 @@ def parse_config():
     parser.add_argument('--cfg_file', type=str,
                         default='/home/niko/Documents/sicherung_trainings/second_s_1_240308/cbgs_second_S_w_teacher_multihead.yaml',
                         help='specify the config for training')
-
+    parser.add_argument('--output_dir', type=str, default=None, help='specify an output directory if needed')
     parser.add_argument('--batch_size', type=int, default=8, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=15, required=False, help='number of epochs to train for')
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
@@ -67,6 +67,7 @@ def parse_config():
     parser.add_argument('--multiplier', type=float, default=15, help='multiplier (edge steepness) for entropy sigmoid')
     parser.add_argument('--lower_bound', type=float, default=0.05,
                         help='lower bound for entropy loss. All values below this are set to 0')
+    parser.add_argument('--activation', type=str, default='sigmoid', help='activation function used after entropy calculation')
 
     args = parser.parse_args()
 
@@ -103,7 +104,8 @@ def init(args, cfg):
     if args.fix_random_seed:
         common_utils.set_random_seed(666 + cfg.LOCAL_RANK)
 
-    output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG / args.extra_tag
+    if args.output_dir is None:
+        output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG / args.extra_tag
     ckpt_dir = output_dir / 'ckpt'
     output_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -438,7 +440,8 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
                                 args.num_bins,
                                 args.x_shift,
                                 args.multiplier,
-                                args.lower_bound)
+                                args.lower_bound,
+                                args.activation)
         # kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
         visfm.feature_maps = None
 
@@ -591,7 +594,7 @@ def fmapKdLoss(fmap_student, fmap_teacher):
     return loss(fmap_student, fmap_teacher)
 
 
-def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05):
+def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05, act_fn='sigmoid'):
     """Calculates the entropy of the feature maps of the student network
     """
     fmap_student = fmap_student.dense()
@@ -601,12 +604,13 @@ def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, mult
     entr_student, _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_student, axis=-3, keepdims=False), num_bins)
     entr_teacher, _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_teacher, axis=-3, keepdims=False), num_bins)
 
-    # sigmoid function to improve visibility
-    entr_student = torch.sigmoid(multiplier * (entr_student - x_shift))
-    entr_student[entr_student < lower_bound] = 0
+    if act_fn == 'sigmoid':
+        # sigmoid function to improve visibility
+        entr_student = torch.sigmoid(multiplier * (entr_student - x_shift))
+        entr_student[entr_student < lower_bound] = 0
 
-    entr_teacher = torch.sigmoid(multiplier * (entr_teacher - x_shift))
-    entr_teacher[entr_teacher < lower_bound] = 0
+        entr_teacher = torch.sigmoid(multiplier * (entr_teacher - x_shift))
+        entr_teacher[entr_teacher < lower_bound] = 0
 
     loss = nn.MSELoss(reduction='mean')
     return loss(entr_student, entr_teacher)
