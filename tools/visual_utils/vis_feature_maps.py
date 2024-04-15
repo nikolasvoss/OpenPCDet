@@ -534,7 +534,7 @@ def entropyOfFmapsTorch(feature_map):
 
     # normalize
     feature_map -= lower_limit
-    feature_map /= (upper_limit - lower_limit)  # set maximum value to 1
+    feature_map = torch.div(feature_map, (upper_limit - lower_limit))  # set maximum value to 1
 
     # num_bins, fewer often work better
     num_bins = max(3, feature_map.shape[0] // 20)

@@ -37,7 +37,7 @@ def parse_config():
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
     parser.add_argument('--pretrained_model', type=str, help='pretrained_model',
-                        default='/home/niko/Documents/sicherung_trainings/second_s_1_240308/checkpoint_epoch_15.pth')
+                        default=None)#'/home/niko/Documents/sicherung_trainings/second_s_1_240308/checkpoint_epoch_15.pth')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--sync_bn', action='store_true', default=False, help='whether to use sync bn')
@@ -53,6 +53,7 @@ def parse_config():
     parser.add_argument('--start_epoch', type=int, default=0, help='')
     parser.add_argument('--num_epochs_to_eval', type=int, default=0, help='number of checkpoints to be evaluated')
     parser.add_argument('--save_to_file', action='store_true', default=False, help='')
+    parser.add_argument('--eval_after_epoch', action='store_true', default=False, help='evaluate after each epoch')
 
     parser.add_argument('--use_tqdm_to_record', action='store_true', default=False,
                         help='if True, the intermediate losses will not be logged to file, only tqdm will be used')
@@ -60,6 +61,12 @@ def parse_config():
     parser.add_argument('--ckpt_save_time_interval', type=int, default=300, help='in terms of seconds')
     parser.add_argument('--wo_gpu_stat', action='store_true', help='')
     parser.add_argument('--use_amp', default=False, action='store_true', help='use mix precision training')
+    # add arguments for kd loss and entropy loss
+    parser.add_argument('--num_bins', type=int, default=None, help='number of bins for entropy histogram')
+    parser.add_argument('--x_shift', type=float, default=0.7, help='x-shift (threshold) for entropy sigmoid')
+    parser.add_argument('--multiplier', type=float, default=15, help='multiplier (edge steepness) for entropy sigmoid')
+    parser.add_argument('--lower_bound', type=float, default=0.05,
+                        help='lower bound for entropy loss. All values below this are set to 0')
 
     args = parser.parse_args()
 
@@ -235,6 +242,7 @@ def main():
         model_teacher,
         optimizer,
         train_loader,
+        eval_after_epoch=args.eval_after_epoch,
         model_func=model_fn_decorator(),
         lr_scheduler=lr_scheduler,
         optim_cfg=cfg.OPTIMIZATION,
@@ -288,10 +296,10 @@ def main():
 
     logger.info('**********************End evaluation %s/%s(%s)**********************' %
                 (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
-def train_kd_model_w_eval(model, model_teacher, optimizer, train_loader, model_func, lr_scheduler, optim_cfg,
+def train_kd_model(model, model_teacher, optimizer, train_loader, model_func, lr_scheduler, optim_cfg,
                 start_epoch, total_epochs, start_iter, rank, tb_log, ckpt_save_dir, train_sampler=None,
                 lr_warmup_scheduler=None, ckpt_save_interval=1, max_ckpt_save_num=50,
-                merge_all_iters_to_one_epoch=False, use_amp=False,
+                merge_all_iters_to_one_epoch=False, use_amp=False, eval_after_epoch=False,
                 use_logger_to_record=False, logger=None, logger_iter_interval=None, ckpt_save_time_interval=None,
                 show_gpu_stat=False, cfg=None, args=None, output_dir=None, dist_train=None):
     accumulated_iter = start_iter
@@ -322,6 +330,7 @@ def train_kd_model_w_eval(model, model_teacher, optimizer, train_loader, model_f
                                                              augment_disable_flag, logger)
             accumulated_iter = train_one_epoch_kd(
                 model, model_teacher, optimizer, train_loader, model_func,
+                args=args,
                 lr_scheduler=cur_scheduler,
                 accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,
                 rank=rank, tbar=tbar, tb_log=tb_log,
@@ -353,17 +362,18 @@ def train_kd_model_w_eval(model, model_teacher, optimizer, train_loader, model_f
                     checkpoint_state(model, optimizer, trained_epoch, accumulated_iter), filename=ckpt_name,
                 )
 
-            # New code to evaluate after finishing each epoch
-            eval_epoch(model, cur_epoch, cfg, args, output_dir, logger, dist_train,
-                       ckpt_path=ckpt_name.parent / (ckpt_name.name + '.pth')
-                       )
+            if eval_after_epoch:
+                # Evaluate the model after each epoch
+                eval_epoch(model, cur_epoch, cfg, args, output_dir, logger, dist_train,
+                           ckpt_path=ckpt_name.parent / (ckpt_name.name + '.pth')
+                           )
 
 
 def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func, lr_scheduler, accumulated_iter, optim_cfg,
                     rank, tbar, total_it_each_epoch, dataloader_iter, tb_log=None, leave_pbar=False,
                     use_logger_to_record=False, logger=None, logger_iter_interval=50, cur_epoch=None,
                     total_epochs=None, ckpt_save_dir=None, ckpt_save_time_interval=300, show_gpu_stat=False,
-                    use_amp=False):
+                    use_amp=False, args=None):
     """
     This function is derived from train_utils.train_one_epoch with an added teacher model.
     The teacher is only used for inference and kd loss calculation.
