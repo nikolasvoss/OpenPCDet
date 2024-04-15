@@ -237,7 +237,7 @@ def main():
     logger.info('**********************Start training %s/%s(%s)**********************'
                 % (cfg.EXP_GROUP_PATH, cfg.TAG, args.extra_tag))
 
-    train_kd_model_w_eval(
+    train_kd_model(
         model,
         model_teacher,
         optimizer,
@@ -433,7 +433,12 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
         ####################################################
         start_time = time.time()
 
-        kd_loss = fmapEntropyLoss(visfm.feature_maps[1], visfm.feature_maps[0])
+        kd_loss = fmapEntropyLoss(visfm.feature_maps[1],
+                                visfm.feature_maps[0],
+                                args.num_bins,
+                                args.x_shift,
+                                args.multiplier,
+                                args.lower_bound)
         # kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
         visfm.feature_maps = None
 
@@ -586,15 +591,22 @@ def fmapKdLoss(fmap_student, fmap_teacher):
     return loss(fmap_student, fmap_teacher)
 
 
-def fmapEntropyLoss(fmap_student, fmap_teacher):
+def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05):
     """Calculates the entropy of the feature maps of the student network
     """
     fmap_student = fmap_student.dense()
     fmap_teacher = fmap_teacher.dense()
 
     # sum over z-axis
-    entr_student, _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_student, axis=-3, keepdims=False))
-    entr_teacher, _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_teacher, axis=-3, keepdims=False))
+    entr_student, _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_student, axis=-3, keepdims=False), num_bins)
+    entr_teacher, _ = visfm.entropyOfFmapsTorch(torch.sum(fmap_teacher, axis=-3, keepdims=False), num_bins)
+
+    # sigmoid function to improve visibility
+    entr_student = torch.sigmoid(multiplier * (entr_student - x_shift))
+    entr_student[entr_student < lower_bound] = 0
+
+    entr_teacher = torch.sigmoid(multiplier * (entr_teacher - x_shift))
+    entr_teacher[entr_teacher < lower_bound] = 0
 
     loss = nn.MSELoss(reduction='mean')
     return loss(entr_student, entr_teacher)
