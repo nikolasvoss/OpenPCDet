@@ -470,7 +470,7 @@ def entropyOfFmaps(feature_map):
     # Expects a feature map tensor of shape [feature_maps, y, x]
     # Abort if the feature map is empty
     if feature_map.max() == 0 and feature_map.min() == 0:
-        return np.zeros(feature_map.shape[1:])
+        return np.zeros(feature_map.shape[1:]), 0
     feature_map_no_zeroes = feature_map[feature_map!=0]
     # Cut outliers and normalize
     lower_limit = np.percentile(feature_map_no_zeroes, 0.01)
