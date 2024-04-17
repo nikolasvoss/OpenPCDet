@@ -341,6 +341,11 @@ class VoxelResBackBone8x(nn.Module):
         else:
             layer_nums = [1, 2, 3, 3, 3, 1]
 
+        if model_cfg.get('FEAT_ADAPT_LAYER', False):
+            use_feat_adapt_layer = model_cfg.FEAT_ADAPT_LAYER
+        else:
+            use_feat_adapt_layer = False
+
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, num_filters[0], 3, padding=1, bias=False, indice_key='subm1'),
             norm_fn(num_filters[0]),
@@ -393,7 +398,7 @@ class VoxelResBackBone8x(nn.Module):
                                 bias=False, indice_key='spconv_down2'),
             norm_fn(num_filters[5]))
 
-        if int(model_cfg.WIDTH) != 1: # if student
+        if use_feat_adapt_layer is True:
             # the feature adaptation layer is used to adapt the feature dimension of the student to the teacher
             self.feature_adapt = spconv.SparseSequential(
                 spconv.SparseConv3d(num_filters[5], 128, 1, stride=1, padding=0),

@@ -14,6 +14,7 @@ MODEL:
     BACKBONE_3D:
         NAME: VoxelResBackBone8x
         WIDTH: 0.75
+        FEAT_ADAPT_LAYER: True
 
     MAP_TO_BEV:
         NAME: HeightCompression
@@ -22,6 +23,7 @@ MODEL:
     BACKBONE_2D:
         NAME: BaseBEVBackbone
         WIDTH: 0.5
+#        FEAT_ADAPT_LAYER: False # not implemented yet
 
         LAYER_NUMS: [5, 5]
         LAYER_STRIDES: [1, 2]
