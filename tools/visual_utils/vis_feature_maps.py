@@ -271,10 +271,10 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
         vis.destroy_window()
 
 
-def visualizeFmapEntropy(feature_map, output_dir, samples_idx, input_points=None, pred_boxes=None, gt_boxes=None):
+def visualizeFmapEntropy(feature_map, samples_idx, output_dir=None, input_points=None, pred_boxes=None, gt_boxes=None):
     if feature_map is None:
         raise ValueError("No feature map available. Check if the hook was triggered correctly.")
-    if not os.path.exists(output_dir):
+    if output_dir is not None and not os.path.exists(output_dir):
         raise FileNotFoundError(f"Output directory `{output_dir}` does not exist.")
     if input_points is not None:
         input_points = input_points[:, 1:4]  # Only use the xyz coordinates
@@ -358,7 +358,9 @@ def visualizeFmapEntropy(feature_map, output_dir, samples_idx, input_points=None
     vis.get_view_control().set_zoom(0.5)
     vis.run()
     # save the entropy image. add x_shift, multiplier and num_bins to the filename
-    vis.capture_screen_image(f'{output_dir}/entropy_sample{samples_idx}_xshift{x_shift}_multiplier{multiplier}_numbins{num_bins}.png')
+    if output_dir is not None:
+        print("Saving image...")
+        vis.capture_screen_image(f'{output_dir}/entropy_sample{samples_idx}_xshift{x_shift}_multiplier{multiplier}_numbins{num_bins}.png')
 
     vis.destroy_window()
     
