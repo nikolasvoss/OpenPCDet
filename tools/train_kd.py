@@ -436,7 +436,7 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
         with torch.no_grad():
             with torch.cuda.amp.autocast(enabled=use_amp):
                 load_data_to_gpu(batch)
-                _, _ = model_teacher(batch)
+                model_teacher(batch)
                 # data from hooked layer is stored in visfm.feature_maps
 
         model.train()
