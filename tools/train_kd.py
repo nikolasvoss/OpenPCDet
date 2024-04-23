@@ -62,12 +62,25 @@ def parse_config():
     parser.add_argument('--wo_gpu_stat', action='store_true', help='')
     parser.add_argument('--use_amp', default=False, action='store_true', help='use mix precision training')
     # add arguments for kd loss and entropy loss
+    parser.add_argument('--kd_loss_weight', type=float, default=0.5, help='weight for kd loss')
+    parser.add_argument('--gt_loss_weight', type=float, default=0.5, help='weight for gt loss')
     parser.add_argument('--num_bins', type=int, default=None, help='number of bins for entropy histogram')
     parser.add_argument('--x_shift', type=float, default=0.7, help='x-shift (threshold) for entropy sigmoid')
     parser.add_argument('--multiplier', type=float, default=15, help='multiplier (edge steepness) for entropy sigmoid')
     parser.add_argument('--lower_bound', type=float, default=0.05,
                         help='lower bound for entropy loss. All values below this are set to 0')
-    parser.add_argument('--activation', type=str, default='sigmoid', help='activation function used after entropy calculation')
+    parser.add_argument('--activation', type=str, default=None, help='activation function used after entropy calculation')
+
+    parser.add_argument('--pretrained_model_teacher', type=str, 
+                        default='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth', 
+                        help='pretrained model for teacher')
+    parser.add_argument('--layer0_name_teacher', type=str, default="backbone_3d.conv_out.0", help='layer0 name for teacher')
+    parser.add_argument('--layer1_name_teacher', type=str, default=None, help='layer1 name for teacher')
+    parser.add_argument('--layer2_name_teacher', type=str, default=None, help='layer2 name for teacher')
+    parser.add_argument('--layer0_name_student', type=str, default="backbone_3d.feature_adapt.0", help='layer0 name for student')
+    parser.add_argument('--layer1_name_student', type=str, default=None, help='layer1 name for student')
+    parser.add_argument('--layer2_name_student', type=str, default=None, help='layer2 name for student')
+    
 
     args = parser.parse_args()
 
@@ -179,9 +192,6 @@ def main():
     if args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.cuda()
-    # add feature map hook
-    visfm.registerHookForLayer(model, layer_name_student)
-    logger.info('Created student hook for layer: %s' % layer_name_student)
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 
     # load checkpoint if it is possible
@@ -445,7 +455,7 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
         # kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
         visfm.feature_maps = None
 
-        loss = gt_loss_weight * gt_loss + kd_loss_weight * kd_loss
+        loss = args.gt_loss_weight * gt_loss + args.kd_loss_weight * kd_loss
 
         end_time = time.time()  # end time after kd_loss calculation
         kd_loss_time = end_time - start_time  # time taken to calculate kd_loss
@@ -582,6 +592,40 @@ def eval_epoch(model, epoch, cfg, args, output_dir, logger, dist_train, ckpt_pat
     gc.collect()
 
 
+def createHooks(model, model_teacher, args, logger):
+    """
+    Create hooks for student and teacher model
+    if only layer 0 is used:
+    feature_map[0] = layer0_student
+    feature_map[1] = layer0_teacher
+
+    if all layers are used:
+    feature_map[0] = layer0_student
+    feature_map[1] = layer0_teacher
+    feature_map[2] = layer1_student
+    feature_map[3] = layer1_teacher
+    feature_map[4] = layer2_student
+    feature_map[5] = layer2_teacher
+    """
+    visfm.registerHookForLayer(model, args.layer0_name_student)
+    logger.info('Created student hook for layer: %s' % args.layer0_name_student)
+    visfm.registerHookForLayer(model_teacher, args.layer0_name_teacher)
+    logger.info('Created teacher hook for layer: %s' % args.layer0_name_teacher)
+
+    if args.layer1_name_student is not None:
+        visfm.registerHookForLayer(model, args.layer1_name_student)
+        logger.info('Created student hook for layer: %s' % args.layer1_name_student)
+    if args.layer1_name_teacher is not None:
+        visfm.registerHookForLayer(model_teacher, args.layer1_name_teacher)
+        logger.info('Created teacher hook for layer: %s' % args.layer1_name_teacher)
+    if args.layer2_name_student is not None:
+        visfm.registerHookForLayer(model, args.layer2_name_student)
+        logger.info('Created student hook for layer: %s' % args.layer2_name_student)
+    if args.layer2_name_teacher is not None:
+        visfm.registerHookForLayer(model_teacher, args.layer2_name_teacher)
+        logger.info('Created teacher hook for layer: %s' % args.layer2_name_teacher)
+
+
 def fmapKdLoss(fmap_student, fmap_teacher):
     """Calculates the KL divergence between the feature maps of the student and teacher networks.
     Firstly the different number of channels must be handled
@@ -617,11 +661,4 @@ def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, mult
 
 
 if __name__ == '__main__':
-    pretrained_model_teacher = '/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
-    # layer_name = ["backbone_3d.conv_out.0", "backbone_2d.blocks.0.7"]
-    layer_name_teacher = "backbone_3d.conv_out.0"
-    # layer_name_student = "backbone_3d.conv_out.0"
-    layer_name_student = "backbone_3d.feature_adapt"
-    kd_loss_weight = 5
-    gt_loss_weight = 0.5
     main()
