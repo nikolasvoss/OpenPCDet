@@ -149,6 +149,8 @@ def init(args, cfg):
     return output_dir, ckpt_dir, logger, tb_log, dist_train, total_gpus
 
 def main():
+    torch.backends.cudnn.benchmark = True
+
     args, cfg = parse_config()
 
     output_dir, ckpt_dir, logger, tb_log, dist_train, total_gpus = init(args, cfg)
