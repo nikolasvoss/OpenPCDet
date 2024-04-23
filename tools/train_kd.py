@@ -61,6 +61,8 @@ def parse_config():
     parser.add_argument('--ckpt_save_time_interval', type=int, default=300, help='in terms of seconds')
     parser.add_argument('--wo_gpu_stat', action='store_true', help='')
     parser.add_argument('--use_amp', default=False, action='store_true', help='use mix precision training')
+    parser.add_argument('--v', action='store_true', default=True, help='verbose logging')
+
     # add arguments for kd loss and entropy loss
     parser.add_argument('--kd_loss_weight', type=float, default=0.5, help='weight for kd loss')
     parser.add_argument('--gt_loss_weight', type=float, default=0.5, help='weight for gt loss')
@@ -224,7 +226,8 @@ def main():
         model = nn.parallel.DistributedDataParallel(model, device_ids=[cfg.LOCAL_RANK % torch.cuda.device_count()])
     logger.info(
         f'----------- Model {cfg.MODEL.NAME} created, param count: {sum([m.numel() for m in model.parameters()])} -----------')
-    # logger.info(model)
+    if args.v:  # verbose logging
+        logger.info(model)
 
     lr_scheduler, lr_warmup_scheduler = build_scheduler(
         optimizer, total_iters_each_epoch=len(train_loader), total_epochs=args.epochs,
@@ -235,15 +238,17 @@ def main():
     # build teacher model
     ###########################################################################
     model_teacher = build_network(model_cfg=cfg.MODEL_TEACHER, num_class=len(cfg.CLASS_NAMES), dataset=train_set)
-    model_teacher.load_params_from_file(filename=pretrained_model_teacher, to_cpu=dist_train, logger=logger)
+    model_teacher.load_params_from_file(filename=args.pretrained_model_teacher, to_cpu=dist_train, logger=logger)
     model_teacher.cuda()
     model_teacher.eval()
     logger.info(
         f'----------- Model Teacher {cfg.MODEL_TEACHER.NAME} created, param count: {sum([m.numel() for m in model_teacher.parameters()])} -----------')
-    # logger.info(model_teacher)
-    # add feature map hook
-    visfm.registerHookForLayer(model_teacher, layer_name_teacher)
-    logger.info('Created teacher hook for layer: %s' % layer_name_teacher)
+    if args.v:  # verbose logging
+        logger.info(model_teacher)
+
+    ############################################################################
+    # Create hooks for student and teacher model
+    createHooks(model, model_teacher, args, logger)
 
     # -----------------------start training---------------------------
     logger.info('**********************Start training %s/%s(%s)**********************'
@@ -459,8 +464,11 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
 
         end_time = time.time()  # end time after kd_loss calculation
         kd_loss_time = end_time - start_time  # time taken to calculate kd_loss
-        #print(f"Time taken for kd_loss calculation: {kd_loss_time} seconds.")
-        #print(f"Loss: {gt_loss_weight:.2f} * {gt_loss:.4f} + {kd_loss_weight:.2f} * {kd_loss:.4f} = {loss:.4f}")
+        if args.v:  # verbose logging
+            logger.info(f"Time for kd_loss calc: {kd_loss_time:.6f}s, "
+                  f"weighted GT-Loss: {args.gt_loss_weight*gt_loss:.4f}, "
+                  f"weighted KD-Loss: {args.kd_loss_weight*kd_loss:.4f}, "
+                  f"total: {loss:.4f}")
 
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
