@@ -61,9 +61,10 @@ def parse_config():
     parser.add_argument('--ckpt_save_time_interval', type=int, default=300, help='in terms of seconds')
     parser.add_argument('--wo_gpu_stat', action='store_true', help='')
     parser.add_argument('--use_amp', default=False, action='store_true', help='use mix precision training')
-    parser.add_argument('--v', action='store_true', default=True, help='verbose logging')
+    parser.add_argument('--v', action='store_true', default=False, help='verbose logging')
 
     # add arguments for kd loss and entropy loss
+    parser.add_argument('--kd_loss_func', type=str, default='entropy', help='kd loss function')
     parser.add_argument('--kd_loss_weight', type=float, default=0.5, help='weight for kd loss')
     parser.add_argument('--gt_loss_weight', type=float, default=0.5, help='weight for gt loss')
     parser.add_argument('--num_bins', type=int, default=None, help='number of bins for entropy histogram')
@@ -72,6 +73,7 @@ def parse_config():
     parser.add_argument('--lower_bound', type=float, default=0.05,
                         help='lower bound for entropy loss. All values below this are set to 0')
     parser.add_argument('--activation', type=str, default=None, help='activation function used after entropy calculation')
+    parser.add_argument('--top_n', type=int, default=5000, help='top n voxels to consider for entropy calculation')
 
     parser.add_argument('--pretrained_model_teacher', type=str, 
                         default='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth', 
@@ -79,7 +81,7 @@ def parse_config():
     parser.add_argument('--layer0_name_teacher', type=str, default="backbone_3d.conv_out.0", help='layer0 name for teacher')
     parser.add_argument('--layer1_name_teacher', type=str, default=None, help='layer1 name for teacher')
     parser.add_argument('--layer2_name_teacher', type=str, default=None, help='layer2 name for teacher')
-    parser.add_argument('--layer0_name_student', type=str, default="backbone_3d.feature_adapt.0", help='layer0 name for student')
+    parser.add_argument('--layer0_name_student', type=str, default="backbone_3d.feature_adapt_single.0", help='layer0 name for student')
     parser.add_argument('--layer1_name_student', type=str, default=None, help='layer1 name for student')
     parser.add_argument('--layer2_name_student', type=str, default=None, help='layer2 name for student')
     
@@ -121,6 +123,8 @@ def init(args, cfg):
 
     if args.output_dir is None:
         output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG / args.extra_tag
+    else:
+        output_dir = Path(args.output_dir)
     ckpt_dir = output_dir / 'ckpt'
     output_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
@@ -448,18 +452,44 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
             gt_loss, tb_dict, disp_dict = model_func(model, batch)
 
         ####################################################
-        # Loss calculation
+        # KD Loss calculation
         ####################################################
         start_time = time.time()
 
-        kd_loss = fmapEntropyLoss(visfm.feature_maps[1],
-                                visfm.feature_maps[0],
-                                args.num_bins,
-                                args.x_shift,
-                                args.multiplier,
-                                args.lower_bound,
-                                args.activation)
-        # kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
+        if args.kd_loss_func == 'entropy':
+            if len(visfm.feature_maps) == 2:
+                kd_loss = fmapEntropyLoss(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
+                                      args.multiplier, args.lower_bound, args.activation, topN=args.top_n)
+            elif len(visfm.feature_maps) == 4:
+                kd_loss = fmapEntropyLoss(visfm.feature_maps[2], visfm.feature_maps[0], args.num_bins, args.x_shift,
+                                      args.multiplier, args.lower_bound, args.activation)
+                kd_loss += fmapEntropyLoss(visfm.feature_maps[3], visfm.feature_maps[1], args.num_bins, args.x_shift,
+                                      args.multiplier, args.lower_bound, args.activation)
+            elif len(visfm.feature_maps) == 6:
+                kd_loss = fmapEntropyLoss(visfm.feature_maps[3], visfm.feature_maps[0], args.num_bins, args.x_shift,
+                                      args.multiplier, args.lower_bound, args.activation)
+                kd_loss += fmapEntropyLoss(visfm.feature_maps[4], visfm.feature_maps[1], args.num_bins, args.x_shift,
+                                      args.multiplier, args.lower_bound, args.activation)
+                kd_loss += fmapEntropyLoss(visfm.feature_maps[5], visfm.feature_maps[2], args.num_bins, args.x_shift,
+                                      args.multiplier, args.lower_bound, args.activation)
+            else:
+                raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
+        elif args.kd_loss_func == 'basic':
+            if len(visfm.feature_maps) == 2:
+                kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
+            elif len(visfm.feature_maps) == 4:
+                kd_loss = fmapKdLoss(visfm.feature_maps[2], visfm.feature_maps[0])
+                kd_loss += fmapKdLoss(visfm.feature_maps[3], visfm.feature_maps[1])
+            elif len(visfm.feature_maps) == 6:
+                kd_loss = fmapKdLoss(visfm.feature_maps[3], visfm.feature_maps[0])
+                kd_loss += fmapKdLoss(visfm.feature_maps[4], visfm.feature_maps[1])
+                kd_loss += fmapKdLoss(visfm.feature_maps[5], visfm.feature_maps[2])
+            else:
+                raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
+        else:
+            raise ValueError("Invalid kd_loss_func argument. Must be 'entropy' or 'basic'")
+
+        # Delete the feature maps to prevent errors in backward pass, also frees up memory
         visfm.feature_maps = None
 
         loss = args.gt_loss_weight * gt_loss + args.kd_loss_weight * kd_loss
@@ -648,7 +678,7 @@ def fmapKdLoss(fmap_student, fmap_teacher):
     return loss(fmap_student, fmap_teacher)
 
 
-def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05, act_fn='sigmoid'):
+def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05, act_fn='sigmoid', top_n=5000):
     """Calculates the entropy of the feature maps of the student network
     1. Sum over the z-axis -> fmap_student.shape [batch, channel, y, x]: [8, 96, 128, 128], fmap_teacher.shape: [8, 128, 128, 128]
     2. Calculate the entropy of the teacher -> entr_teacher.shape: [8, 128, 128]
@@ -669,7 +699,7 @@ def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, mult
     # entr_teacher needs to be flattened in order to work with topk
     # indices_flattened.shape = [batch, N]
     # [1] means to only use the second return value of topk
-    indices_flattened = torch.topk(torch.flatten(entr_teacher, start_dim=1), topN, dim=1)[1]
+    indices_flattened = torch.topk(torch.flatten(entr_teacher, start_dim=1), top_n, dim=1)[1]
 
     # convert the flattened indices back to 2D indices
     indices = torch.stack((indices_flattened // entr_teacher.shape[-1], indices_flattened % entr_teacher.shape[-1]), dim=-1)
