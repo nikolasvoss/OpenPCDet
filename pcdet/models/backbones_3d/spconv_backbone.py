@@ -344,8 +344,12 @@ class VoxelResBackBone8x(nn.Module):
         if model_cfg.get('FEAT_ADAPT_SINGLE', False):
             use_feat_adapt_single = model_cfg.FEAT_ADAPT_LAYER
         else:
-            use_feat_adapt_layer = False
             use_feat_adapt_single = False
+            
+        if model_cfg.get('FEAT_ADAPT_AUTOENCODER', False):
+            use_feat_adapt_autoencoder = model_cfg.FEAT_ADAPT_AUTOENCODER
+        else:
+            use_feat_adapt_autoencoder = False
 
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, num_filters[0], 3, padding=1, bias=False, indice_key='subm1'),
@@ -404,14 +408,26 @@ class VoxelResBackBone8x(nn.Module):
             self.feature_adapt_single = spconv.SparseSequential(
                 spconv.SparseConv3d(num_filters[5], 128, 1, stride=1, padding=0),
                 nn.ReLU())
-            self.feature_adapt[0].bias.requires_grad = False
-            self.feature_adapt[0].weight.requires_grad = False
-            self.feature_adapt[0].bias.data.fill_(0.)
-            self.feature_adapt[0].weight.data.fill_(1.)
             self.feature_adapt_single[0].bias.requires_grad = False
             self.feature_adapt_single[0].weight.requires_grad = False
             self.feature_adapt_single[0].bias.data.fill_(0.)
             self.feature_adapt_single[0].weight.data.fill_(1.)
+            
+        if use_feat_adapt_autoencoder is True:
+            # currently only used for teacher to student adaptation
+            self.feat_adapt_autoencoder = spconv.SparseSequential(
+                spconv.SparseConv3d(num_filters[5], 112, 1, stride=1, padding=0),
+                nn.ReLU(),
+                spconv.SparseConv3d(112, 96, 1, stride=1, padding=0),
+                nn.ReLU())
+            self.feat_adapt_autoencoder[0].bias.requires_grad = True
+            self.feat_adapt_autoencoder[0].weight.requires_grad = True
+            self.feat_adapt_autoencoder[0].bias.data.fill_(0.)
+            self.feat_adapt_autoencoder[0].weight.data.fill_(1.)
+            self.feat_adapt_autoencoder[2].bias.requires_grad = True
+            self.feat_adapt_autoencoder[2].weight.requires_grad = True
+            self.feat_adapt_autoencoder[2].bias.data.fill_(0.)
+            self.feat_adapt_autoencoder[2].weight.data.fill_(1.)
 
         self.final_act = act_fn()
 
@@ -453,10 +469,10 @@ class VoxelResBackBone8x(nn.Module):
         # [200, 176, 5] -> [200, 176, 2]
         out = self.conv_out(x_conv4)
         # if student, insert feature adaptation layer
-        if getattr(self, 'feature_adapt', None):
-            feature_adapt = self.feature_adapt(self.conv_out[0](x_conv4))
         if getattr(self, 'feature_adapt_single', None):
             self.feature_adapt_single(self.conv_out[0](x_conv4))
+        if getattr(self, 'feat_adapt_autoencoder', None):
+            self.feat_adapt_autoencoder(self.conv_out[0](x_conv4))
 
         # TODO: commented because clone_sp_tensor need modification of spconv_utils.py
         # if getattr(self, 'is_teacher', None):
