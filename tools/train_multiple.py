@@ -50,7 +50,7 @@ for num_bins in num_bins_values:
         file.write(f"pretrained_model: {pretrained_model}\n")
         file.write(f"pretrained_model_teacher: {pretrained_model_teacher}\n")
         file.write(f"epochs: {epochs}\n")
-        file.write(f"num_bins: {num_bins}\n")
+        file.write(f"num_bins: {num_bins_values}\n")
         file.write(f"x_shift: {x_shift_values[0]}\n")
         file.write(f"multiplier: {multiplier_values[0]}\n")
         file.write(f"eval_after_epoch: {eval_after_epoch}\n")
