@@ -8,16 +8,17 @@ x_shift_values = 0.7
 multiplier_values = 15
 eval_after_epoch = False
 kd_loss_func = "entropy" # "basic" for direct comparison
-gt_loss_weight = 0.5
-kd_loss_weight = 1.5
-epochs = 5
-verbose = True
+top_n = 5000
+gt_loss_weight = 1
+kd_loss_weight = 1
+epochs = 15
+verbose = False
 
 cfg_file = '/home/niko/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_second_S_w_teacher_multihead.yaml'
 pretrained_model = None # pretrained student model
 pretrained_model_teacher = '/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
-layer0_name_teacher = "backbone_3d.conv_out.0"
-layer0_name_student = "backbone_3d.feature_adapt.0"
+layer0_name_teacher = "backbone_3d.feat_adapt_autoencoder.2"
+layer0_name_student = "backbone_3d.conv_out.0"
 # Optional
 layer1_name_teacher = None
 layer1_name_student = None
