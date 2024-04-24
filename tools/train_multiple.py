@@ -7,6 +7,7 @@ num_bins_values = [15]
 x_shift_values = [0.7]
 multiplier_values = [15]
 eval_after_epoch = False
+kd_loss_func = "entropy" # "basic" for direct comparison
 gt_loss_weight = 0.5
 kd_loss_weight = 1.5
 epochs = 5
@@ -52,6 +53,7 @@ for num_bins in num_bins_values:
         file.write(f"x_shift: {x_shift_values[0]}\n")
         file.write(f"multiplier: {multiplier_values[0]}\n")
         file.write(f"eval_after_epoch: {eval_after_epoch}\n")
+        file.write(f"kd_loss_func: {kd_loss_func}\n")
         file.write(f"gt_loss_weight: {gt_loss_weight}\n")
         file.write(f"kd_loss_weight: {kd_loss_weight}\n")
         file.write(f"layer0_name_teacher: {layer0_name_teacher}\n")
@@ -68,6 +70,7 @@ for num_bins in num_bins_values:
            "--epochs", str(epochs),
            "--num_bins", str(num_bins),
            "--output_dir", output_dir_num_bins,
+           "--kd_loss_func", kd_loss_func,
            "--gt_loss_weight", str(gt_loss_weight),
            "--kd_loss_weight", str(kd_loss_weight),
            "--x_shift", str(x_shift_values[0]),
