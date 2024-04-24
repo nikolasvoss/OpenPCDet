@@ -635,17 +635,20 @@ def eval_epoch(model, epoch, cfg, args, output_dir, logger, dist_train, ckpt_pat
 def createHooks(model, model_teacher, args, logger):
     """
     Create hooks for student and teacher model
+    They are sorted depending on which model is inferenced first.
+    In this case teacher is inferenced first, so the order is:
+
     if only layer 0 is used:
-    feature_map[0] = layer0_student
-    feature_map[1] = layer0_teacher
+    feature_map[0] = layer0_teacher
+    feature_map[1] = layer0_student
 
     if all layers are used:
-    feature_map[0] = layer0_student
-    feature_map[1] = layer0_teacher
-    feature_map[2] = layer1_student
-    feature_map[3] = layer1_teacher
-    feature_map[4] = layer2_student
-    feature_map[5] = layer2_teacher
+    feature_map[0] = layer0_teacher
+    feature_map[1] = layer1_teacher
+    feature_map[2] = layer2_teacher
+    feature_map[3] = layer0_student
+    feature_map[4] = layer1_student
+    feature_map[5] = layer2_student
     """
     visfm.registerHookForLayer(model, args.layer0_name_student)
     logger.info('Created student hook for layer: %s' % args.layer0_name_student)
@@ -674,7 +677,7 @@ def fmapKdLoss(fmap_student, fmap_teacher):
     fmap_teacher = fmap_teacher.dense()
 
     # loss = torch.sum((fmap_student-fmap_teacher)**2, dim=1)     # sum over all channels
-    loss = nn.MSELoss(reduction='mean')
+    loss = nn.MSELoss()
     return loss(fmap_student, fmap_teacher)
 
 
@@ -715,7 +718,7 @@ def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, mult
         entr_teacher = torch.sigmoid(multiplier * (entr_teacher - x_shift))
         entr_teacher[entr_teacher < lower_bound] = 0
 
-    loss = nn.L1Loss()
+    loss = nn.MSELoss()
     return loss(topN_student_values, topN_teacher_values)
 
 
