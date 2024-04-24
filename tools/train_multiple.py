@@ -55,6 +55,7 @@ for num_bins in num_bins_values:
         file.write(f"multiplier: {multiplier_values[0]}\n")
         file.write(f"eval_after_epoch: {eval_after_epoch}\n")
         file.write(f"kd_loss_func: {kd_loss_func}\n")
+        file.write(f"top_n: {top_n}\n")
         file.write(f"gt_loss_weight: {gt_loss_weight}\n")
         file.write(f"kd_loss_weight: {kd_loss_weight}\n")
         file.write(f"layer0_name_teacher: {layer0_name_teacher}\n")
@@ -72,6 +73,7 @@ for num_bins in num_bins_values:
            "--num_bins", str(num_bins),
            "--output_dir", output_dir_num_bins,
            "--kd_loss_func", kd_loss_func,
+           "--top_n", str(top_n),
            "--gt_loss_weight", str(gt_loss_weight),
            "--kd_loss_weight", str(kd_loss_weight),
            "--x_shift", str(x_shift_values[0]),
