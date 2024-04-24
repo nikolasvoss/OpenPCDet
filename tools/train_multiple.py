@@ -3,9 +3,9 @@ import time
 import os
 
 # Define the parameters for multiple runs
-num_bins_values = [15]
-x_shift_values = [0.7]
-multiplier_values = [15]
+num_bins_values = 15
+x_shift_values = 0.7
+multiplier_values = 15
 eval_after_epoch = False
 kd_loss_func = "entropy" # "basic" for direct comparison
 gt_loss_weight = 0.5
