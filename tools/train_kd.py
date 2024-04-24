@@ -256,9 +256,10 @@ def main():
     for param in model_teacher.parameters():
         param.requires_grad = False
 
-    # Unfreeze the feat_adapt_autoencoder layer
-    for param in model_teacher.backbone_3d.feat_adapt_autoencoder.parameters():
-        param.requires_grad = True
+    # Unfreeze the feat_adapt_autoencoder layer if it exists
+    if getattr(model_teacher.backbone_3d, 'feat_adapt_autoencoder', None) is not None:
+        for param in model_teacher.backbone_3d.feat_adapt_autoencoder.parameters():
+            param.requires_grad = True
 
     ############################################################################
     # Create hooks for student and teacher model
