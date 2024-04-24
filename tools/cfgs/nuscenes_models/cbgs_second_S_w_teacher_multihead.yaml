@@ -14,7 +14,8 @@ MODEL:
     BACKBONE_3D:
         NAME: VoxelResBackBone8x
         WIDTH: 0.75
-        FEAT_ADAPT_LAYER: True
+        FEAT_ADAPT_SINGLE: True
+        FEAT_ADAPT_AUTOENCODER: False
 
     MAP_TO_BEV:
         NAME: HeightCompression
@@ -241,6 +242,8 @@ MODEL_TEACHER:
     BACKBONE_3D:
         NAME: VoxelResBackBone8x
         WIDTH: 1.0
+        FEAT_ADAPT_SINGLE: False
+        FEAT_ADAPT_AUTOENCODER: False
 
     MAP_TO_BEV:
         NAME: HeightCompression
