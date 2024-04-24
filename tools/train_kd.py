@@ -61,7 +61,7 @@ def parse_config():
     parser.add_argument('--ckpt_save_time_interval', type=int, default=300, help='in terms of seconds')
     parser.add_argument('--wo_gpu_stat', action='store_true', help='')
     parser.add_argument('--use_amp', default=False, action='store_true', help='use mix precision training')
-    parser.add_argument('--v', action='store_true', default=False, help='verbose logging')
+    parser.add_argument('--v', action='store_true', default=True, help='verbose logging')
 
     # add arguments for kd loss and entropy loss
     parser.add_argument('--kd_loss_func', type=str, default='entropy', help='kd loss function')
@@ -252,6 +252,14 @@ def main():
     if args.v:  # verbose logging
         logger.info(model_teacher)
 
+    # Freeze the entire model
+    for param in model_teacher.parameters():
+        param.requires_grad = False
+
+    # Unfreeze the feat_adapt_autoencoder layer
+    for param in model_teacher.backbone_3d.feat_adapt_autoencoder.parameters():
+        param.requires_grad = True
+
     ############################################################################
     # Create hooks for student and teacher model
     createHooks(model, model_teacher, args, logger)
@@ -439,11 +447,11 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
             tb_log.add_scalar('meta_data/learning_rate', cur_lr, accumulated_iter)
 
         model_teacher.eval()
-        with torch.no_grad():
-            with torch.cuda.amp.autocast(enabled=use_amp):
-                load_data_to_gpu(batch)
-                model_teacher(batch)
-                # data from hooked layer is stored in visfm.feature_maps
+        with torch.cuda.amp.autocast(enabled=use_amp):
+            load_data_to_gpu(batch)
+
+            model_teacher(batch)
+            # data from hooked layer is stored in visfm.feature_maps
 
         model.train()
         optimizer.zero_grad()
@@ -459,19 +467,19 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
         if args.kd_loss_func == 'entropy':
             if len(visfm.feature_maps) == 2:
                 kd_loss = fmapEntropyLoss(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation, topN=args.top_n)
+                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
             elif len(visfm.feature_maps) == 4:
                 kd_loss = fmapEntropyLoss(visfm.feature_maps[2], visfm.feature_maps[0], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation)
+                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
                 kd_loss += fmapEntropyLoss(visfm.feature_maps[3], visfm.feature_maps[1], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation)
+                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
             elif len(visfm.feature_maps) == 6:
                 kd_loss = fmapEntropyLoss(visfm.feature_maps[3], visfm.feature_maps[0], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation)
+                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
                 kd_loss += fmapEntropyLoss(visfm.feature_maps[4], visfm.feature_maps[1], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation)
+                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
                 kd_loss += fmapEntropyLoss(visfm.feature_maps[5], visfm.feature_maps[2], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation)
+                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
             else:
                 raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
         elif args.kd_loss_func == 'basic':
