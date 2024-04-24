@@ -342,7 +342,7 @@ class VoxelResBackBone8x(nn.Module):
             layer_nums = [1, 2, 3, 3, 3, 1]
 
         if model_cfg.get('FEAT_ADAPT_SINGLE', False):
-            use_feat_adapt_single = model_cfg.FEAT_ADAPT_LAYER
+            use_feat_adapt_single = model_cfg.FEAT_ADAPT_SINGLE
         else:
             use_feat_adapt_single = False
             
@@ -422,12 +422,8 @@ class VoxelResBackBone8x(nn.Module):
                 nn.ReLU())
             self.feat_adapt_autoencoder[0].bias.requires_grad = True
             self.feat_adapt_autoencoder[0].weight.requires_grad = True
-            self.feat_adapt_autoencoder[0].bias.data.fill_(0.)
-            self.feat_adapt_autoencoder[0].weight.data.fill_(1.)
             self.feat_adapt_autoencoder[2].bias.requires_grad = True
             self.feat_adapt_autoencoder[2].weight.requires_grad = True
-            self.feat_adapt_autoencoder[2].bias.data.fill_(0.)
-            self.feat_adapt_autoencoder[2].weight.data.fill_(1.)
 
         self.final_act = act_fn()
 
