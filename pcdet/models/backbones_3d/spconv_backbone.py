@@ -341,10 +341,11 @@ class VoxelResBackBone8x(nn.Module):
         else:
             layer_nums = [1, 2, 3, 3, 3, 1]
 
-        if model_cfg.get('FEAT_ADAPT_LAYER', False):
-            use_feat_adapt_layer = model_cfg.FEAT_ADAPT_LAYER
+        if model_cfg.get('FEAT_ADAPT_SINGLE', False):
+            use_feat_adapt_single = model_cfg.FEAT_ADAPT_LAYER
         else:
             use_feat_adapt_layer = False
+            use_feat_adapt_single = False
 
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, num_filters[0], 3, padding=1, bias=False, indice_key='subm1'),
@@ -398,15 +399,19 @@ class VoxelResBackBone8x(nn.Module):
                                 bias=False, indice_key='spconv_down2'),
             norm_fn(num_filters[5]))
 
-        if use_feat_adapt_layer is True:
+        if use_feat_adapt_single is True:
             # the feature adaptation layer is used to adapt the feature dimension of the student to the teacher
-            self.feature_adapt = spconv.SparseSequential(
+            self.feature_adapt_single = spconv.SparseSequential(
                 spconv.SparseConv3d(num_filters[5], 128, 1, stride=1, padding=0),
                 nn.ReLU())
             self.feature_adapt[0].bias.requires_grad = False
             self.feature_adapt[0].weight.requires_grad = False
             self.feature_adapt[0].bias.data.fill_(0.)
             self.feature_adapt[0].weight.data.fill_(1.)
+            self.feature_adapt_single[0].bias.requires_grad = False
+            self.feature_adapt_single[0].weight.requires_grad = False
+            self.feature_adapt_single[0].bias.data.fill_(0.)
+            self.feature_adapt_single[0].weight.data.fill_(1.)
 
         self.final_act = act_fn()
 
@@ -450,6 +455,8 @@ class VoxelResBackBone8x(nn.Module):
         # if student, insert feature adaptation layer
         if getattr(self, 'feature_adapt', None):
             feature_adapt = self.feature_adapt(self.conv_out[0](x_conv4))
+        if getattr(self, 'feature_adapt_single', None):
+            self.feature_adapt_single(self.conv_out[0](x_conv4))
 
         # TODO: commented because clone_sp_tensor need modification of spconv_utils.py
         # if getattr(self, 'is_teacher', None):
