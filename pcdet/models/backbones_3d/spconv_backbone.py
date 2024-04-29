@@ -351,6 +351,11 @@ class VoxelResBackBone8x(nn.Module):
         else:
             use_feat_adapt_autoencoder = False
 
+        if model_cfg.get('FULL_AUTOENCODER', False):
+            use_full_autoencoder = model_cfg.FULL_AUTOENCODER
+        else:
+            use_full_autoencoder = False
+
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, num_filters[0], 3, padding=1, bias=False, indice_key='subm1'),
             norm_fn(num_filters[0]),
@@ -420,10 +425,18 @@ class VoxelResBackBone8x(nn.Module):
                 nn.ReLU(),
                 spconv.SparseConv3d(112, 96, 1, stride=1, padding=0),
                 nn.ReLU())
-            self.feat_adapt_autoencoder[0].bias.requires_grad = True
-            self.feat_adapt_autoencoder[0].weight.requires_grad = True
-            self.feat_adapt_autoencoder[2].bias.requires_grad = True
-            self.feat_adapt_autoencoder[2].weight.requires_grad = True
+
+        if use_full_autoencoder is True:
+            # currently used for teacher only training
+            self.full_autoencoder = spconv.SparseSequential(
+                spconv.SparseConv3d(num_filters[5], 112, 1, stride=1, padding=0),
+                nn.ReLU(),
+                spconv.SparseConv3d(112, 96, 1, stride=1, padding=0),
+                nn.ReLU(),
+                spconv.SparseConv3d(96, 112, 1, stride=1, padding=0),
+                nn.ReLU(),
+                spconv.SparseConv3d(112, num_filters[5], 1, stride=1, padding=0),
+                nn.ReLU())
 
         self.final_act = act_fn()
 
@@ -469,6 +482,8 @@ class VoxelResBackBone8x(nn.Module):
             self.feat_adapt_single(self.conv_out[0](x_conv4))
         if getattr(self, 'feat_adapt_autoencoder', None):
             self.feat_adapt_autoencoder(self.conv_out[0](x_conv4))
+        if getattr(self, 'full_autoencoder', None):
+            self.full_autoencoder(self.conv_out[0](x_conv4))
 
         # TODO: commented because clone_sp_tensor need modification of spconv_utils.py
         # if getattr(self, 'is_teacher', None):
