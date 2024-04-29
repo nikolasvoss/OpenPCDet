@@ -61,7 +61,7 @@ def parse_config():
     parser.add_argument('--ckpt_save_time_interval', type=int, default=300, help='in terms of seconds')
     parser.add_argument('--wo_gpu_stat', action='store_true', help='')
     parser.add_argument('--use_amp', default=False, action='store_true', help='use mix precision training')
-    parser.add_argument('--v', action='store_true', default=True, help='verbose logging')
+    parser.add_argument('--v', action='store_true', default=False, help='verbose logging')
 
     # add arguments for kd loss and entropy loss
     parser.add_argument('--kd_loss_func', type=str, default='entropy', help='kd loss function')
@@ -320,6 +320,8 @@ def main():
     args.start_epoch = max(args.epochs - args.num_epochs_to_eval,
                            0)  # Only evaluate the last args.num_epochs_to_eval epochs
 
+    torch.cuda.empty_cache()
+    gc.collect()
     repeat_eval_ckpt(
         model.module if dist_train else model,
         test_loader, args, eval_output_dir, logger, ckpt_dir,
@@ -395,6 +397,8 @@ def train_kd_model(model, model_teacher, optimizer, train_loader, model_func, lr
                 )
 
             if eval_after_epoch:
+                torch.cuda.empty_cache()
+                gc.collect()
                 # Evaluate the model after each epoch
                 eval_epoch(model, cur_epoch, cfg, args, output_dir, logger, dist_train,
                            ckpt_path=ckpt_name.parent / (ckpt_name.name + '.pth')
