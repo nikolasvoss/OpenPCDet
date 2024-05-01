@@ -46,6 +46,7 @@ def parse_config():
     parser.add_argument('--start_epoch', type=int, default=0, help='')
     parser.add_argument('--num_epochs_to_eval', type=int, default=0, help='number of checkpoints to be evaluated')
     parser.add_argument('--save_to_file', action='store_true', default=False, help='')
+    parser.add_argument('--eval_after_epoch', action='store_true', default=False, help='evaluate after each epoch')
     
     parser.add_argument('--use_tqdm_to_record', action='store_true', default=False, help='if True, the intermediate losses will not be logged to file, only tqdm will be used')
     parser.add_argument('--logger_iter_interval', type=int, default=50, help='')
@@ -182,6 +183,7 @@ def main():
         model,
         optimizer,
         train_loader,
+        eval_after_epoch=args.eval_after_epoch,
         model_func=model_fn_decorator(),
         lr_scheduler=lr_scheduler,
         optim_cfg=cfg.OPTIMIZATION,
@@ -239,7 +241,7 @@ def main():
 def train_model_w_eval(model, optimizer, train_loader, model_func, lr_scheduler, optim_cfg,
                 start_epoch, total_epochs, start_iter, rank, tb_log, ckpt_save_dir, train_sampler=None,
                 lr_warmup_scheduler=None, ckpt_save_interval=1, max_ckpt_save_num=50,
-                merge_all_iters_to_one_epoch=False, use_amp=False,
+                merge_all_iters_to_one_epoch=False, use_amp=False, eval_after_epoch=False,
                 use_logger_to_record=False, logger=None, logger_iter_interval=None, ckpt_save_time_interval=None,
                 show_gpu_stat=False, cfg=None, args=None, output_dir=None, dist_train=None):
     accumulated_iter = start_iter
@@ -301,10 +303,11 @@ def train_model_w_eval(model, optimizer, train_loader, model_func, lr_scheduler,
                     checkpoint_state(model, optimizer, trained_epoch, accumulated_iter), filename=ckpt_name,
                 )
 
-            # New code to evaluate after finishing each epoch
-            eval_epoch(model, cur_epoch, cfg, args, output_dir, logger, dist_train,
-                       ckpt_path=ckpt_name.parent / (ckpt_name.name + '.pth')
-                       )
+            if eval_after_epoch:
+                # Evaluate the model after each epoch
+                eval_epoch(model, cur_epoch, cfg, args, output_dir, logger, dist_train,
+                           ckpt_path=ckpt_name.parent / (ckpt_name.name + '.pth')
+                           )
 
 def eval_epoch(model, epoch, cfg, args, output_dir, logger, dist_train, ckpt_path=None):
     logger.info('**********************Prepare evaluation during training %s/%s(%s)**********************' %
