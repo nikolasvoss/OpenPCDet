@@ -559,6 +559,54 @@ def entropyOfFmapsTorch(feature_map, num_bins=None):
     return entropy, num_bins
 
 
+def entropyOfFmapsSparse(feature_map, num_bins=None):
+    """
+    does the same as entropyOfFmapsTorch, but for sparse tensors
+    indices are in feature_map.indices, values in feature_map
+    batch index is in feature_map.indices[:, 0]
+
+    input: feature_map: SparseConvTensor of shape [points, feature_maps]
+
+    returns:
+    feature_map of shape [points, 1]
+
+    """
+
+    # Cut outliers and normalize. Remove zeros first
+    lower_limit = torch.quantile(feature_map[feature_map != 0], 0.01)
+    upper_limit = torch.quantile(feature_map[feature_map != 0], 0.99)
+
+    # set all values below or above limits to limits
+    feature_map = torch.clamp(feature_map, min=lower_limit, max=upper_limit)
+
+    # normalize
+    feature_map -= lower_limit
+    feature_map = torch.div(feature_map, (upper_limit - lower_limit))  # set maximum value to 1
+
+    # num_bins, fewer often work better
+    if num_bins is None:
+        num_bins = max(3, feature_map.shape[1] // 20)
+
+    # Compute histograms
+    bin_edges = torch.linspace(0, 1, num_bins + 1)
+    histograms = torch.zeros((feature_map.shape[0], num_bins), dtype=torch.float32, device=feature_map.device)
+    for bin in range(num_bins):
+        histograms[:, bin] = torch.sum(
+            (feature_map >= bin_edges[bin]) &
+            (feature_map < bin_edges[bin+1]),
+            dim=1)
+
+    # add a small constant to avoid division by zero
+    # add a small constant to avoid probabilities = 0
+    probabilities = torch.div(histograms, (histograms.sum(dim=1, keepdim=True) + 1e-10)).clamp(min=1e-10)
+
+    entropy = -torch.sum(probabilities * torch.log(probabilities), dim=1)
+
+    # normalize
+    entropy -= entropy.min()
+    return torch.div(entropy, entropy.max())
+
+
 def npVectorToO3dPoints(x:np.array, y:np.array=None, z:np.array=None):
     """Converts numpy arrays to Open3D Vector3dVector.
     If y or z are not provided, they are set to 0.
