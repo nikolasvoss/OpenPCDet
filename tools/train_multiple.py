@@ -4,11 +4,12 @@ import os
 
 # Define the parameters for multiple runs
 num_bins_values = 15
-x_shift_values = 0.7
-multiplier_values = 15
+x_shift_values = [0.7]
+multiplier_values = [15]
 eval_after_epoch = False
-kd_loss_func = "entropy" # "basic" for direct comparison
+kd_loss_func = "entropyRelN" # "basic", "entropy", "entropyRelN"
 top_n = 5000
+top_n_relative = 0.75
 gt_loss_weight = 1
 kd_loss_weight = 1
 epochs = 15
@@ -17,8 +18,8 @@ verbose = False
 cfg_file = '/home/niko/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_second_S_w_teacher_multihead.yaml'
 pretrained_model = None # pretrained student model
 pretrained_model_teacher = '/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
-layer0_name_teacher = "backbone_3d.feat_adapt_autoencoder.2"
-layer0_name_student = "backbone_3d.conv_out.0"
+layer0_name_teacher = "backbone_3d.conv_out.0"
+layer0_name_student = "backbone_3d.feat_adapt_single.0"
 # Optional
 layer1_name_teacher = None
 layer1_name_student = None
@@ -39,9 +40,9 @@ subprocess.run(["cp", "./visual_utils/vis_feature_maps.py", f"{output_dir}/src"]
 subprocess.run(["cp", "../pcdet/models/backbones_3d/spconv_backbone.py", f"{output_dir}/src"])
 
 # Loop over the parameters
-for num_bins in num_bins_values:
+for k in range(1):
     # add a subdirectory for each run that is named after the parameter
-    output_dir_num_bins = f"{output_dir}/num_bins_{num_bins}"
+    output_dir_num_bins = f"{output_dir}/kd_loss_{kd_loss_func}"
     os.makedirs(output_dir_num_bins, exist_ok=False)
     # create a file where all current training parameters are saved
     with open(f"{output_dir_num_bins}/training_parameters.txt", "w") as file:
@@ -56,6 +57,7 @@ for num_bins in num_bins_values:
         file.write(f"eval_after_epoch: {eval_after_epoch}\n")
         file.write(f"kd_loss_func: {kd_loss_func}\n")
         file.write(f"top_n: {top_n}\n")
+        file.write(f"top_n_relative: {top_n_relative}\n")
         file.write(f"gt_loss_weight: {gt_loss_weight}\n")
         file.write(f"kd_loss_weight: {kd_loss_weight}\n")
         file.write(f"layer0_name_teacher: {layer0_name_teacher}\n")
@@ -70,10 +72,11 @@ for num_bins in num_bins_values:
            "--cfg_file", cfg_file,
            "--pretrained_model_teacher", pretrained_model_teacher,
            "--epochs", str(epochs),
-           "--num_bins", str(num_bins),
+           "--num_bins", str(num_bins_values),
            "--output_dir", output_dir_num_bins,
            "--kd_loss_func", kd_loss_func,
            "--top_n", str(top_n),
+           "--top_n_relative", str(top_n_relative),
            "--gt_loss_weight", str(gt_loss_weight),
            "--kd_loss_weight", str(kd_loss_weight),
            "--x_shift", str(x_shift_values[0]),
