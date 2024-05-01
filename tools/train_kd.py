@@ -74,6 +74,7 @@ def parse_config():
                         help='lower bound for entropy loss. All values below this are set to 0')
     parser.add_argument('--activation', type=str, default=None, help='activation function used after entropy calculation')
     parser.add_argument('--top_n', type=int, default=5000, help='top n voxels to consider for entropy calculation')
+    parser.add_argument('--top_n_relative', type=int, default=0.75, help='top n voxels to consider for entropyRelativeN calculation')
 
     parser.add_argument('--pretrained_model_teacher', type=str, 
                         default='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth', 
@@ -487,6 +488,9 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
                                       args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
             else:
                 raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
+        elif args.kd_loss_func == 'entropyRelN':
+            kd_loss = fmapEntropyLossRelativeN(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
+                                        args.multiplier, args.lower_bound, args.activation, top_n_relative=args.top_n_relative)
         elif args.kd_loss_func == 'basic':
             if len(visfm.feature_maps) == 2:
                 kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
@@ -733,6 +737,51 @@ def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, mult
 
     loss = nn.MSELoss()
     return loss(topN_student_values, topN_teacher_values)
+
+
+def fmapEntropyLossRelativeN(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05, act_fn='sigmoid', top_n_relative=0.75):
+    """Calculates the entropy loss of the with a relative topN value in sparse format
+    1. Counts values per batch and calculates the relative topN value
+    2. Calculate entropy of the teacher in sparse format
+    3. Get topN indices of the entropy map
+    4. Get topN values of the feature maps of the student and teacher
+    5. Calculate MSE-Loss between the topN values of the student and teacher
+
+    Input:
+    - fmap_student: SparseConvTensor of the student network
+    - fmap_teacher: SparseConvTensor of the teacher network
+    - num_bins (None): number of bins used for the entropy calculation
+    - x_shift (0.7): x-shift for the sigmoid activation
+    - multiplier (15): multiplier for the sigmoid activation
+    - lower_bound(0.05): lower bound for the sigmoid activation
+    - act_fn ('sigmoid'): activation function used after entropy calculation
+    - top_n_relative (0.75): percentage of topN values to consider for the entropy calculation (0-1)
+
+    Output:
+    - loss: MSE-Loss between the topN values of the student and teacher
+    """
+    batch_counts = torch.bincount(fmap_teacher.indices[:, 0])
+    batch_counts_relative = (batch_counts * top_n_relative).int()
+    batch_counts = torch.cat((torch.tensor([0], device=batch_counts.device),
+                              torch.cumsum(batch_counts, dim=0)))
+
+    entr_teacher = visfm.entropyOfFmapsSparse(feature_map=fmap_teacher.features, num_bins=num_bins)
+
+    topN_features_teacher = torch.empty(0, device=fmap_teacher.features.device)
+    topN_features_student = torch.empty(0, device=fmap_student.features.device)
+
+    # get topN indices for each batch. The indices must match the concatenated structure of the sparse tensor.
+    # Then get the topN values of the feature maps of the student and teacher.
+    for batch in range(len(batch_counts)-1):
+        topN_indices = torch.topk(entr_teacher[batch_counts[batch]:batch_counts[batch+1]], batch_counts_relative[batch], largest=True).indices
+        topN_indices += batch_counts[batch]
+
+        # Concatenate new values to the tensors
+        topN_features_teacher = torch.cat((topN_features_teacher, fmap_teacher.features[topN_indices]), dim=0)
+        topN_features_student = torch.cat((topN_features_student, fmap_student.features[topN_indices]), dim=0)
+
+    loss = nn.MSELoss()
+    return loss(topN_features_student, topN_features_teacher)
 
 
 if __name__ == '__main__':

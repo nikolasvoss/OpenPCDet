@@ -607,6 +607,31 @@ def entropyOfFmapsSparse(feature_map, num_bins=None):
     return torch.div(entropy, entropy.max())
 
 
+def sumChannelsPerPixel(feature_map):
+    """
+    Sum the feature maps over all channels for each pixel.
+    Normalize the values to the range [0, 1].
+
+    Parameters:
+    feature_map (torch.Tensor or np.ndarray): A tensor or array representing the feature map tensor with shape
+                                [batch_size, feature_maps, y, x].
+
+    Returns:
+    torch.Tensor or np.ndarray: A 2D tensor or array representing the sum of all feature maps over all channels
+                  for each spatial location [batch_size, y, x].
+    """
+    if isinstance(feature_map, np.ndarray):
+        sum_channels = np.sum(feature_map, axis=0, keepdims=False)
+        sum_channels -= sum_channels.min()
+        sum_channels = np.divide(sum_channels, sum_channels.max())
+        return sum_channels
+    elif isinstance(feature_map, torch.Tensor):
+        sum_channels = torch.sum(feature_map, dim=1, keepdim=False)
+        sum_channels -= sum_channels.min()
+        sum_channels = torch.div(sum_channels, sum_channels.max())
+        return sum_channels
+
+
 def npVectorToO3dPoints(x:np.array, y:np.array=None, z:np.array=None):
     """Converts numpy arrays to Open3D Vector3dVector.
     If y or z are not provided, they are set to 0.
