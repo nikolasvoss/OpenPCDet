@@ -74,7 +74,7 @@ def parse_config():
                         help='lower bound for entropy loss. All values below this are set to 0')
     parser.add_argument('--activation', type=str, default=None, help='activation function used after entropy calculation')
     parser.add_argument('--top_n', type=int, default=5000, help='top n voxels to consider for entropy calculation')
-    parser.add_argument('--top_n_relative', type=int, default=0.75, help='top n voxels to consider for entropyRelativeN calculation')
+    parser.add_argument('--top_n_relative', type=float, default=0.75, help='top n voxels to consider for entropyRelativeN calculation')
 
     parser.add_argument('--pretrained_model_teacher', type=str, 
                         default='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth', 
