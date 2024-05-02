@@ -1,9 +1,11 @@
 from functools import partial
 
+import torch
 import torch.nn as nn
 import numpy as np
 
 from ...utils.spconv_utils import replace_feature, spconv
+from tools.visual_utils.vis_feature_maps import entropyOfFmapsSparse
 
 
 def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stride=1, padding=0,
@@ -356,6 +358,11 @@ class VoxelResBackBone8x(nn.Module):
         else:
             use_full_autoencoder = False
 
+        if model_cfg.get('TOP_PERCENTAGE', False):
+            self.top_percentage = model_cfg.TOP_PERCENTAGE
+        else:
+            self.top_percentage = 1.0
+
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, num_filters[0], 3, padding=1, bias=False, indice_key='subm1'),
             norm_fn(num_filters[0]),
@@ -474,9 +481,24 @@ class VoxelResBackBone8x(nn.Module):
         x_conv3 = self.conv3(x_conv2)
         x_conv4 = self.conv4(x_conv3)
 
-        # for detection head
-        # [200, 176, 5] -> [200, 176, 2]
-        out = self.conv_out(x_conv4)
+        if getattr(self, 'top_percentage', None):
+            topn_indices = torch.topk(entropyOfFmapsSparse(x_conv4.features),
+                                      int(x_conv4.features.shape[0] * self.top_percentage),
+                                      dim=0,
+                                      largest=True,
+                                      sorted=False).indices
+            x_topn = spconv.SparseConvTensor(
+                features=x_conv4.features[topn_indices],
+                indices=x_conv4.indices[topn_indices],
+                spatial_shape=x_conv4.spatial_shape,
+                batch_size=x_conv4.batch_size
+            )
+            out = self.conv_out(x_topn)
+        else:
+            # for detection head
+            # [200, 176, 5] -> [200, 176, 2]
+            out = self.conv_out(x_conv4)
+
         # if student, insert feature adaptation layer
         if getattr(self, 'feat_adapt_single', None):
             self.feat_adapt_single(self.conv_out[0](x_conv4))
