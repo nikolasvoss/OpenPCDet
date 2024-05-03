@@ -360,8 +360,6 @@ class VoxelResBackBone8x(nn.Module):
 
         if model_cfg.get('TOP_PERCENTAGE', False):
             self.top_percentage = model_cfg.TOP_PERCENTAGE
-        else:
-            self.top_percentage = 1.0
 
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, num_filters[0], 3, padding=1, bias=False, indice_key='subm1'),
@@ -420,10 +418,12 @@ class VoxelResBackBone8x(nn.Module):
             self.feat_adapt_single = spconv.SparseSequential(
                 spconv.SparseConv3d(num_filters[5], 128, 1, stride=1, padding=0),
                 nn.ReLU())
-            self.feat_adapt_single[0].bias.requires_grad = False
-            self.feat_adapt_single[0].weight.requires_grad = False
-            self.feat_adapt_single[0].bias.data.fill_(0.)
-            self.feat_adapt_single[0].weight.data.fill_(1.)
+            self.feat_adapt_single[0].bias.requires_grad = True
+            self.feat_adapt_single[0].weight.requires_grad = True
+            nn.init.zeros_(self.feat_adapt_single[0].bias.data)
+            nn.init.kaiming_normal_(self.feat_adapt_single[0].weight.data)
+            # self.feat_adapt_single[0].bias.data.fill_(0.)
+            # self.feat_adapt_single[0].weight.data.fill_(1.)
             
         if use_feat_adapt_autoencoder is True:
             # currently only used for teacher to student adaptation
@@ -484,6 +484,7 @@ class VoxelResBackBone8x(nn.Module):
         if getattr(self, 'top_percentage', None):
             topn_indices = torch.topk(entropyOfFmapsSparse(x_conv4.features),
                                       int(x_conv4.features.shape[0] * self.top_percentage),
+        if getattr(self, 'top_percentage', None) or self.top_percentage < 1.0:
                                       dim=0,
                                       largest=True,
                                       sorted=False).indices
