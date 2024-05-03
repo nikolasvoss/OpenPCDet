@@ -363,6 +363,8 @@ def train_kd_model(model, model_teacher, optimizer, train_loader, model_func, lr
 
             augment_disable_flag = disable_augmentation_hook(hook_config, dataloader_iter, total_epochs, cur_epoch, cfg,
                                                              augment_disable_flag, logger)
+            # with torch.autograd.detect_anomaly():
+            # use for debugging
             accumulated_iter = train_one_epoch_kd(
                 model, model_teacher, optimizer, train_loader, model_func,
                 args=args,
