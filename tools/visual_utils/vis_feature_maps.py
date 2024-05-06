@@ -287,7 +287,7 @@ def visualizeFmapEntropy(feature_map, samples_idx, output_dir=None, input_points
         feature_map = feature_map.unsqueeze(2) # Add a dummy z-dimension for compatibility
     feature_map = feature_map.cpu().numpy()
 
-
+    # plotZScore(torch.sum(feature_map, axis=2, keepdims=False).squeeze(0))
     ############################################################
     # Entropy Calculation
     ############################################################
@@ -684,6 +684,59 @@ def computeHistogramsTorch(feature_map, bin_edges, num_bins):
         # Handle the last bin inclusive of the upper edge
         histograms[-1] = (feature_map[bat] >= bin_edges[-2]).sum(dim=0)
     return histograms
+
+
+def calcZScore(feature_map):
+    """
+    Calculates the average Z-Score of outliers with a threshold of 2 for each x,y position in the feature map.
+    The z-score is calculated for all channels per pixel and the average z-score of the outliers is returned.
+    feature_map: torch.Tensor of shape [feature_maps, y, x]
+
+    returns: average_z_score_outliers [y, x]
+    """
+    # Calculate mean and standard deviation
+    mean = torch.mean(feature_map, dim=0, keepdim=True)
+    std = torch.std(feature_map, dim=0, keepdim=True)
+
+    # Compute Z-Scores for the entire dataset
+    z_scores = torch.abs((feature_map - mean) / (std + 1e-7))  # added small constant to avoid division by zero
+
+    # Consider those values as outliers that have a Z-Score over a threshold (often 2 or 3)
+    threshold = 3
+    outliers = z_scores > threshold
+
+    # Calculate average Z-Score of the outliers
+    average_z_score_outliers = torch.where(outliers, z_scores, torch.zeros_like(z_scores)).mean(dim=0)
+
+    return average_z_score_outliers, mean[0], std[0], torch.mean(z_scores, dim=0)
+
+
+def plotZScore(feature_map):
+    avg_z_outlier, mean, std, avg_z = calcZScore(feature_map)
+
+    avg_z_outlier = torch.nn.ReLU()(avg_z_outlier)
+    mean = torch.nn.ReLU()(mean)
+    std = torch.nn.ReLU()(std+0.2)
+    avg_z = torch.nn.ReLU()(avg_z)
+
+    fig, axs = plt.subplots(1, 4, figsize=(20, 5))
+
+    axs[0].imshow(mean.cpu().numpy())
+    axs[0].set_title('Mean')
+    # add colorbar
+
+    axs[1].imshow(std.cpu().numpy())
+    axs[1].set_title('Std')
+
+    axs[2].imshow(avg_z.cpu().numpy())
+    axs[2].set_title('Z-Score mean')
+
+    axs[3].imshow(avg_z_outlier.cpu().numpy())
+    axs[3].set_title('Z-Score outliers mean')
+
+    plt.colorbar(axs[0])
+    # Display the plot
+    plt.show()
 
 
 def plotHistAndBoxplot(fmap_entropy, bins=100):
