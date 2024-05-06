@@ -363,7 +363,119 @@ def visualizeFmapEntropy(feature_map, samples_idx, output_dir=None, input_points
         vis.capture_screen_image(f'{output_dir}/entropy_sample{samples_idx}_xshift{x_shift}_multiplier{multiplier}_numbins{num_bins}.png')
 
     vis.destroy_window()
-    
+
+
+def visualizeFmapEntropyVsSparseVals(feature_map, samples_idx, output_dir=None, input_points=None, pred_boxes=None, gt_boxes=None):
+    if feature_map is None:
+        raise ValueError("No feature map available. Check if the hook was triggered correctly.")
+    if output_dir is not None and not os.path.exists(output_dir):
+        raise FileNotFoundError(f"Output directory `{output_dir}` does not exist.")
+    if input_points is not None:
+        input_points = input_points[:, 1:4]  # Only use the xyz coordinates
+
+    if hasattr(feature_map, 'dense'):
+        sparse_indices = feature_map.indices.cpu().numpy()
+        feature_map = feature_map.dense()
+    feature_map = feature_map.detach()
+    if feature_map.ndim == 4:
+        print('2D feature map detected')
+        feature_map = feature_map.unsqueeze(2)  # Add a dummy z-dimension for compatibility
+    feature_map = feature_map.cpu().numpy()
+
+    ############################################################
+    # Entropy Calculation
+    ############################################################
+    # feature_map should have the shape [batch_size, feature_maps, z, y, x]
+
+    # 1. Sum over all z-planes
+    # 2. Calculate entropy over all channels for every single spatial location ("voxel")
+    fmap_entropy, num_bins = entropyOfFmaps(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
+
+    # sigmoid function to make the entropy more visible
+    x_shift = 0.7
+    multiplier = 15
+    fmap_entropy = 1 / (1 + np.exp(-multiplier * (fmap_entropy - x_shift)))
+    fmap_entropy[fmap_entropy < 0.05] = 0
+
+    ############################################################
+    # Open3D Visualization
+    ############################################################
+    # Point cloud range from nuscenes.yaml
+    pointcloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+    # original voxel size from nuscenes.yaml
+    voxel_size = [0.1, 0.1, 0.2]
+    # voxel size fitted to current feature map
+    voxel_size[0] = (pointcloud_range[3] - pointcloud_range[0]) / feature_map.shape[-1]  # x
+    voxel_size[1] = (pointcloud_range[4] - pointcloud_range[1]) / feature_map.shape[-2]  # y
+    voxel_size[2] = (pointcloud_range[5] - pointcloud_range[2]) / feature_map.shape[-3]  # z
+    print('Voxel size: ', voxel_size)
+
+    x = np.linspace(pointcloud_range[0], pointcloud_range[3], feature_map.shape[4], endpoint=False)
+    y = np.linspace(pointcloud_range[1], pointcloud_range[4], feature_map.shape[3],
+                    endpoint=False)  # added minus, because the y-axis was flipped
+    z = np.array([-5.])
+
+    # Create Open3d Visualizer:
+    points = npVectorToO3dPoints(x, y, z)
+    colors = np.zeros((len(fmap_entropy.flatten()), 3), dtype=np.float64)
+    colors[:, 0] = fmap_entropy.flatten()
+    colors[colors > 0] = 1
+    colors = o3d.utility.Vector3dVector(colors)
+
+    feature_pcd = o3d.geometry.PointCloud()
+    feature_pcd.points = points
+    feature_pcd.colors = colors
+
+    # # WARNING: the voxels z-dimension is currently not correct
+    voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(feature_pcd, voxel_size=voxel_size[0])
+
+    # Create Open3d Visualizer:
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(
+        window_name=f'Sample: {samples_idx}, Voxel Size: {voxel_size}, Entropy: x_shift={x_shift}, multiplier={multiplier}, num_bins={num_bins}')
+    vis.get_render_option().point_size = 2.5
+    vis.get_render_option().background_color = [0, 0, 0]
+
+    sparse_indices = sparse_indices[sparse_indices[:, 1] == 0]  # only take the first z-plane
+    sparse_indices = sparse_indices[:, 2:]  # remove batch and z dim. shape: [N, 2]
+    colors_indices = np.zeros((feature_map.shape[-2], feature_map.shape[-1]), dtype=np.uint8)
+    # set the values of temp to 1 at the indices of sparse_indices
+    colors_indices[sparse_indices[:, 0], sparse_indices[:, 1]] = 1
+    colors_sparse_flat = np.zeros((len(fmap_entropy.flatten()), 3), dtype=np.uint8)
+    colors_sparse_flat[:, 1] = colors_indices.flatten()
+
+    sparse_pcd = o3d.geometry.PointCloud()
+    z = np.array([-5.])
+    sparse_pcd.points = npVectorToO3dPoints(x+102.4, y, z)
+    sparse_pcd.colors = o3d.utility.Vector3dVector(colors_sparse_flat)
+    sparse_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(sparse_pcd, voxel_size=voxel_size[0])
+    vis.add_geometry(sparse_grid)
+
+    # plot the sample pc
+    # input_point_cloud = o3d.geometry.PointCloud()
+    # input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
+    # input_point_cloud.paint_uniform_color([0, 1, 0])  # green
+    # vis.add_geometry(input_point_cloud)
+
+    # plot gt and pred boxes
+    if pred_boxes is not None:
+        vis, box3d_list = drawPredBoxes(vis, pred_boxes)
+    if gt_boxes is not None:
+        # gt_angles = gt_boxes[:, 6:8].reshape((-1, 2))
+        vis, box3d_list = drawGtBoxes(vis, gt_boxes)
+
+    vis.add_geometry(voxel_grid)
+
+    vis.get_view_control().set_zoom(0.5)
+    vis.run()
+    # save the entropy image. add x_shift, multiplier and num_bins to the filename
+    if output_dir is not None:
+        print("Saving image...")
+        vis.capture_screen_image(
+            f'{output_dir}/entropy_sample{samples_idx}_xshift{x_shift}_multiplier{multiplier}_numbins{num_bins}.png')
+
+    vis.destroy_window()
+
 
 def drawPredBoxes(vis, pred_boxes):
     vis, box3d_list = draw_box(vis, pred_boxes.cpu(), (1, 1, 0))
@@ -374,7 +486,7 @@ def drawPredBoxes(vis, pred_boxes):
 def drawGtBoxes(vis, gt_boxes):
     for i in range(gt_boxes.shape[0]):
         gt_box = gt_boxes[i, :].reshape((1, 9))
-        vis, box3d_list = draw_box(vis, gt_box.cpu(), (0, 0, 1))
+        vis, box3d_list = draw_box(vis, gt_box.cpu(), (0, 1, 1))
     print('Number of GT-Boxes: ', gt_boxes.shape[0])
     return vis, box3d_list
     
@@ -668,7 +780,6 @@ def computeHistograms(feature_map, bin_edges, num_bins):
         for j in range(w):
             histograms[:, i, j], _ = np.histogram(feature_map[:, i, j], bins=bin_edges)
     return histograms
-
 
 
 def computeHistogramsTorch(feature_map, bin_edges, num_bins):
