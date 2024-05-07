@@ -14,6 +14,9 @@ MODEL:
     BACKBONE_3D:
         NAME: VoxelResBackBone8x
         WIDTH: 0.75
+        #TOP_PERCENTAGE: 0.7
+        FEAT_ADAPT_SINGLE: False
+        FEAT_ADAPT_AUTOENCODER: False
 
     MAP_TO_BEV:
         NAME: HeightCompression
