@@ -23,19 +23,21 @@ import tqdm
 import gc  # Required for garbage collection
 
 import visual_utils.vis_feature_maps as visfm
+import local_paths
 
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str,
-                        default='/home/niko/Documents/sicherung_trainings/second_s_1_240308/cbgs_second_S_w_teacher_multihead.yaml',
+                        default=local_paths.cfg_file_train,
                         help='specify the config for training')
-    parser.add_argument('--output_dir', type=str, default=None, help='specify an output directory if needed')
+    parser.add_argument('--output_dir', type=str, help='specify an output directory if needed',
+                        default=None) #local_paths.output_dir_train)
     parser.add_argument('--batch_size', type=int, default=8, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=15, required=False, help='number of epochs to train for')
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
-    parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
+    parser.add_argument('--ckpt', type=str, default=None, help='can be used to continue training')
     parser.add_argument('--pretrained_model', type=str, help='pretrained_model',
                         default=None)#'/home/niko/Documents/sicherung_trainings/second_s_1_240308/checkpoint_epoch_15.pth')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
@@ -65,10 +67,10 @@ def parse_config():
 
     # add arguments for kd loss and entropy loss
     parser.add_argument('--kd_loss_func', type=str, default='entropy', help='kd loss function')
-    parser.add_argument('--kd_loss_weight', type=float, default=0.5, help='weight for kd loss')
-    parser.add_argument('--gt_loss_weight', type=float, default=0.5, help='weight for gt loss')
+    parser.add_argument('--kd_loss_weight', type=float, default=1.0, help='weight for kd loss')
+    parser.add_argument('--gt_loss_weight', type=float, default=1.0, help='weight for gt loss')
     parser.add_argument('--num_bins', type=int, default=None, help='number of bins for entropy histogram')
-    parser.add_argument('--x_shift', type=float, default=0.7, help='x-shift (threshold) for entropy sigmoid')
+    parser.add_argument('--x_shift', type=float, default=0.5, help='x-shift (threshold) for entropy sigmoid')
     parser.add_argument('--multiplier', type=float, default=15, help='multiplier (edge steepness) for entropy sigmoid')
     parser.add_argument('--lower_bound', type=float, default=0.05,
                         help='lower bound for entropy loss. All values below this are set to 0')
@@ -76,13 +78,12 @@ def parse_config():
     parser.add_argument('--top_n', type=int, default=5000, help='top n voxels to consider for entropy calculation')
     parser.add_argument('--top_n_relative', type=float, default=0.75, help='top n voxels to consider for entropyRelativeN calculation')
 
-    parser.add_argument('--pretrained_model_teacher', type=str, 
-                        default='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth', 
-                        help='pretrained model for teacher')
+    parser.add_argument('--pretrained_model_teacher', type=str, help='pretrained model for teacher',
+                        default=local_paths.pretrained_model_teacher)
     parser.add_argument('--layer0_name_teacher', type=str, default="backbone_3d.conv_out.0", help='layer0 name for teacher')
     parser.add_argument('--layer1_name_teacher', type=str, default=None, help='layer1 name for teacher')
     parser.add_argument('--layer2_name_teacher', type=str, default=None, help='layer2 name for teacher')
-    parser.add_argument('--layer0_name_student', type=str, default="backbone_3d.feature_adapt_single.0", help='layer0 name for student')
+    parser.add_argument('--layer0_name_student', type=str, default="backbone_3d.feat_adapt_single.0", help='layer0 name for student')
     parser.add_argument('--layer1_name_student', type=str, default=None, help='layer1 name for student')
     parser.add_argument('--layer2_name_student', type=str, default=None, help='layer2 name for student')
     
@@ -159,26 +160,6 @@ def main():
     args, cfg = parse_config()
 
     output_dir, ckpt_dir, logger, tb_log, dist_train, total_gpus = init(args, cfg)
-
-
-
-    # log to file
-    logger.info('**********************Start logging**********************')
-    gpu_list = os.environ['CUDA_VISIBLE_DEVICES'] if 'CUDA_VISIBLE_DEVICES' in os.environ.keys() else 'ALL'
-    logger.info('CUDA_VISIBLE_DEVICES=%s' % gpu_list)
-
-    if dist_train:
-        logger.info('Training in distributed mode : total_batch_size: %d' % (total_gpus * args.batch_size))
-    else:
-        logger.info('Training with a single process')
-
-    for key, val in vars(args).items():
-        logger.info('{:16} {}'.format(key, val))
-    log_config_to_file(cfg, logger=logger)
-    if cfg.LOCAL_RANK == 0:
-        os.system('cp %s %s' % (args.cfg_file, output_dir))
-
-    tb_log = SummaryWriter(log_dir=str(output_dir / 'tensorboard')) if cfg.LOCAL_RANK == 0 else None
 
     logger.info("----------- Create dataloader & network & optimizer -----------")
     train_set, train_loader, train_sampler = build_dataloader(
@@ -363,6 +344,8 @@ def train_kd_model(model, model_teacher, optimizer, train_loader, model_func, lr
 
             augment_disable_flag = disable_augmentation_hook(hook_config, dataloader_iter, total_epochs, cur_epoch, cfg,
                                                              augment_disable_flag, logger)
+            # with torch.autograd.detect_anomaly():
+            # use for debugging
             accumulated_iter = train_one_epoch_kd(
                 model, model_teacher, optimizer, train_loader, model_func,
                 args=args,

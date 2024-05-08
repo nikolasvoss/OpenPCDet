@@ -16,16 +16,19 @@ from pcdet.config import cfg, cfg_from_list, cfg_from_yaml_file, log_config_to_f
 from pcdet.datasets import build_dataloader
 from pcdet.models import build_network
 from pcdet.utils import common_utils
+import local_paths
 
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default='/home/nvoss/OpenPCDet/output/home/nvoss/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_second_S_multihead/default/cbgs_second_S_multihead.yaml', help='specify the config for training')
+    parser.add_argument('--cfg_file', type=str, default=local_paths.cfg_file_test, help='specify the config for training')
 
+    parser.add_argument('--output_dir', type=str, help='specify an output directory if needed',
+                        default=None) # local_paths.output_dir_test)
     parser.add_argument('--batch_size', type=int, default=8, required=False, help='batch size for training')
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
-    parser.add_argument('--ckpt', type=str, default='/home/nvoss/OpenPCDet/output/home/nvoss/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_second_S_multihead/default/ckpt/checkpoint_epoch_15.pth', help='checkpoint to start from')
+    parser.add_argument('--ckpt', type=str, default=local_paths.ckpt_test, help='checkpoint to start from')
     parser.add_argument('--pretrained_model', type=str, help='pretrained_model', default=None)
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
@@ -40,6 +43,7 @@ def parse_config():
     parser.add_argument('--ckpt_dir', type=str, default=None, help='specify a ckpt directory to be evaluated if needed')
     parser.add_argument('--save_to_file', action='store_true', default=False, help='')
     parser.add_argument('--infer_time', action='store_true', default=False, help='calculate inference latency')
+    parser.add_argument('--infer_time', action='store_true', default=True, help='calculate inference latency')
 
     args = parser.parse_args()
 
@@ -160,7 +164,10 @@ def main():
         assert args.batch_size % total_gpus == 0, 'Batch size should match the number of gpus'
         args.batch_size = args.batch_size // total_gpus
 
-    output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG / args.extra_tag
+    if args.output_dir is None:
+        output_dir = cfg.ROOT_DIR / 'output' / cfg.EXP_GROUP_PATH / cfg.TAG / args.extra_tag
+    else:
+        output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     eval_output_dir = output_dir / 'eval'

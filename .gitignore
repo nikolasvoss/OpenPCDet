@@ -17,3 +17,4 @@ output
 output_old
 version.py
 feature_map_saves/*
+/tools/local_paths.py
