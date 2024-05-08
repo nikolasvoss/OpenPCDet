@@ -1,6 +1,7 @@
 import subprocess
 import time
 import os
+import local_paths
 
 # Define the parameters for multiple runs
 num_bins_values = 15
