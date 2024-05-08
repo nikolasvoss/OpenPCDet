@@ -35,7 +35,7 @@ def parse_config():
     parser.add_argument('--epochs', type=int, default=15, required=False, help='number of epochs to train for')
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
-    parser.add_argument('--ckpt', type=str, default=None, help='checkpoint to start from')
+    parser.add_argument('--ckpt', type=str, default=None, help='can be used to continue training')
     parser.add_argument('--pretrained_model', type=str, help='pretrained_model',
                         default=None)#'/home/niko/Documents/sicherung_trainings/second_s_1_240308/checkpoint_epoch_15.pth')
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
@@ -65,10 +65,10 @@ def parse_config():
 
     # add arguments for kd loss and entropy loss
     parser.add_argument('--kd_loss_func', type=str, default='entropy', help='kd loss function')
-    parser.add_argument('--kd_loss_weight', type=float, default=0.5, help='weight for kd loss')
-    parser.add_argument('--gt_loss_weight', type=float, default=0.5, help='weight for gt loss')
+    parser.add_argument('--kd_loss_weight', type=float, default=1.0, help='weight for kd loss')
+    parser.add_argument('--gt_loss_weight', type=float, default=1.0, help='weight for gt loss')
     parser.add_argument('--num_bins', type=int, default=None, help='number of bins for entropy histogram')
-    parser.add_argument('--x_shift', type=float, default=0.7, help='x-shift (threshold) for entropy sigmoid')
+    parser.add_argument('--x_shift', type=float, default=0.5, help='x-shift (threshold) for entropy sigmoid')
     parser.add_argument('--multiplier', type=float, default=15, help='multiplier (edge steepness) for entropy sigmoid')
     parser.add_argument('--lower_bound', type=float, default=0.05,
                         help='lower bound for entropy loss. All values below this are set to 0')
@@ -82,7 +82,7 @@ def parse_config():
     parser.add_argument('--layer0_name_teacher', type=str, default="backbone_3d.conv_out.0", help='layer0 name for teacher')
     parser.add_argument('--layer1_name_teacher', type=str, default=None, help='layer1 name for teacher')
     parser.add_argument('--layer2_name_teacher', type=str, default=None, help='layer2 name for teacher')
-    parser.add_argument('--layer0_name_student', type=str, default="backbone_3d.feature_adapt_single.0", help='layer0 name for student')
+    parser.add_argument('--layer0_name_student', type=str, default="backbone_3d.feat_adapt_single.0", help='layer0 name for student')
     parser.add_argument('--layer1_name_student', type=str, default=None, help='layer1 name for student')
     parser.add_argument('--layer2_name_student', type=str, default=None, help='layer2 name for student')
     
