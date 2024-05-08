@@ -14,5 +14,6 @@ venv/
 *.zip
 *.bin
 output
+output_old
 version.py
 feature_map_saves/*
