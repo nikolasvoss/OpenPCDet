@@ -66,6 +66,7 @@ for k in range(1):
         file.write(f"layer1_name_student: {layer1_name_student}\n")
         file.write(f"layer2_name_teacher: {layer2_name_teacher}\n")
         file.write(f"layer2_name_student: {layer2_name_student}\n")
+        file.write(f"Comment: init adapt weights with kaiming normal and learned weights and biases.")
 
     # Define the command as a list
     cmd = ["python", "train_kd.py",
