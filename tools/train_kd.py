@@ -23,14 +23,16 @@ import tqdm
 import gc  # Required for garbage collection
 
 import visual_utils.vis_feature_maps as visfm
+import local_paths
 
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str,
-                        default='/home/niko/Documents/sicherung_trainings/second_s_1_240308/cbgs_second_S_w_teacher_multihead.yaml',
+                        default=local_paths.cfg_file_train,
                         help='specify the config for training')
-    parser.add_argument('--output_dir', type=str, default=None, help='specify an output directory if needed')
+    parser.add_argument('--output_dir', type=str, help='specify an output directory if needed',
+                        default=None) #local_paths.output_dir_train)
     parser.add_argument('--batch_size', type=int, default=8, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=15, required=False, help='number of epochs to train for')
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
@@ -76,9 +78,8 @@ def parse_config():
     parser.add_argument('--top_n', type=int, default=5000, help='top n voxels to consider for entropy calculation')
     parser.add_argument('--top_n_relative', type=float, default=0.75, help='top n voxels to consider for entropyRelativeN calculation')
 
-    parser.add_argument('--pretrained_model_teacher', type=str, 
-                        default='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth', 
-                        help='pretrained model for teacher')
+    parser.add_argument('--pretrained_model_teacher', type=str, help='pretrained model for teacher',
+                        default=local_paths.pretrained_model_teacher)
     parser.add_argument('--layer0_name_teacher', type=str, default="backbone_3d.conv_out.0", help='layer0 name for teacher')
     parser.add_argument('--layer1_name_teacher', type=str, default=None, help='layer1 name for teacher')
     parser.add_argument('--layer2_name_teacher', type=str, default=None, help='layer2 name for teacher')

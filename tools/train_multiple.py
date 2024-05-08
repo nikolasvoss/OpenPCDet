@@ -15,9 +15,9 @@ kd_loss_weight = 1
 epochs = 15
 verbose = False
 
-cfg_file = '/home/niko/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_second_S_w_teacher_multihead.yaml'
+cfg_file = local_paths.cfg_file_multi_train
 pretrained_model = None # pretrained student model
-pretrained_model_teacher = '/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
+pretrained_model_teacher = local_paths.pretrained_model_teacher_multi
 layer0_name_teacher = "backbone_3d.conv_out.0"
 layer0_name_student = "backbone_3d.feat_adapt_single.0"
 # Optional
@@ -29,9 +29,9 @@ layer2_name_student = None
 current_date = time.strftime("%y%m%d")
 # Define output_dir, if it exists, add a number to the name
 i = 0
-while os.path.exists(f"/home/niko/Documents/sicherung_trainings/multi_run_{current_date}_{i}"):
+while os.path.exists(f"{local_paths.sicherung_trainings}/multi_run_{current_date}_{i}"):
     i += 1
-output_dir = f"/home/niko/Documents/sicherung_trainings/multi_run_{current_date}_{i}"
+output_dir = f"{local_paths.sicherung_trainings}/multi_run_{current_date}_{i}"
 os.makedirs(f"{output_dir}/src", exist_ok=False)
 
 # Save important .py files

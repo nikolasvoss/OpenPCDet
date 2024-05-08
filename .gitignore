@@ -16,3 +16,4 @@ venv/
 output
 version.py
 feature_map_saves/*
+/tools/local_paths.py
