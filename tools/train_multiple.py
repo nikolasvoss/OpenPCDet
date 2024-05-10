@@ -102,6 +102,7 @@ for k in range(1):
     if verbose:
         cmd.append("--v")
     cmd.append("--use_amp")
+    cmd.append("--fix_random_seed")
 
     print("Running with: ", cmd)
     # Run the command
