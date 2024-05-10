@@ -101,6 +101,7 @@ for k in range(1):
         cmd.append("--eval_after_epoch")
     if verbose:
         cmd.append("--v")
+    cmd.append("--use_amp")
 
     print("Running with: ", cmd)
     # Run the command
