@@ -36,6 +36,8 @@ output_dir = f"{local_paths.sicherung_trainings}/multi_run_{current_date}_{i}"
 os.makedirs(f"{output_dir}/src", exist_ok=False)
 
 # Save important .py files
+subprocess.run(["cp", "train_multiple.py", f"{output_dir}/src"])
+subprocess.run(["cp", "local_paths.py", f"{output_dir}/src"])
 subprocess.run(["cp", "train_kd.py", f"{output_dir}/src"])
 subprocess.run(["cp", "./visual_utils/vis_feature_maps.py", f"{output_dir}/src"])
 subprocess.run(["cp", "../pcdet/models/backbones_3d/spconv_backbone.py", f"{output_dir}/src"])
