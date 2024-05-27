@@ -1297,6 +1297,461 @@ class VoxelResBackBone8xEntropy4(VoxelResBackBone8xEntropy1):
         return batch_dict
 
 
+# Note: When classes are added to backbone_3d.py they must be added to pcdet/models/backbones_3d/__init__.py aswell
+class VoxelResBackBone8xImpNotImpGen(nn.Module):
+    def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
+        super().__init__()
+        self.model_cfg = model_cfg
+        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
+
+        # currently not used
+        # act_fn = get_act_layer(self.model_cfg.get('ACT_FN', 'ReLU'))
+        act_fn = nn.ReLU
+
+        self.sparse_shape = grid_size[::-1] + [1, 0, 0]
+
+        if model_cfg.get('NUM_FILTERS', None):
+            num_filters = model_cfg.NUM_FILTERS
+        else:
+            num_filters = [16, 16, 32, 64, 128, 128]
+
+        if model_cfg.get('WIDTH', None):
+            num_filters = (np.array(num_filters, dtype=np.int32) * model_cfg.WIDTH).astype(int)
+
+        if model_cfg.get('LAYER_NUMS', None):
+            layer_nums = model_cfg.LAYER_NUMS
+        else:
+            layer_nums = [1, 2, 3, 3, 3, 1]
+
+        if model_cfg.get('FEAT_ADAPT_SINGLE', False):
+            use_feat_adapt_single = model_cfg.FEAT_ADAPT_SINGLE
+        else:
+            use_feat_adapt_single = False
+
+        if model_cfg.get('TOP_PERCENTAGE', False):
+            self.top_percentage = model_cfg.TOP_PERCENTAGE
+
+        self.conv_input = spconv.SparseSequential(
+            spconv.SubMConv3d(input_channels, num_filters[0], 3, padding=1, bias=False, indice_key='subm1'),
+            norm_fn(num_filters[0]),
+            act_fn(),
+        )
+        block = partial(post_act_block, act_fn=act_fn)
+
+        # conv1
+        conv1_list = [
+            SparseBasicBlock(num_filters[0], num_filters[1], norm_fn=norm_fn, act_fn=act_fn, indice_key='res1')]
+        for k in range(layer_nums[1] - 1):
+            conv1_list.append(
+                SparseBasicBlock(num_filters[1], num_filters[1], norm_fn=norm_fn, act_fn=act_fn, indice_key='res1'))
+        self.conv1 = spconv.SparseSequential(*conv1_list)
+
+        # conv2
+        conv2_list = [
+            # [1600, 1408, 41] <- [800, 704, 21]
+            block(num_filters[1], num_filters[2], 3, norm_fn=norm_fn, stride=2, padding=1, indice_key='spconv2',
+                  conv_type='spconv'),
+        ]
+        for k in range(layer_nums[2] - 1):
+            conv2_list.append(
+                SparseBasicBlock(num_filters[2], num_filters[2], norm_fn=norm_fn, act_fn=act_fn, indice_key='res2'))
+        self.conv2 = spconv.SparseSequential(*conv2_list)
+
+        # conv3
+        conv3_list = [
+            # [800, 704, 21] <- [400, 352, 11]
+            block(num_filters[2], num_filters[3], 3, norm_fn=norm_fn, stride=2, padding=1, indice_key='spconv3',
+                  conv_type='spconv'),
+        ]
+        for k in range(layer_nums[3] - 1):
+            conv3_list.append(SparseBasicBlock(
+                num_filters[3], num_filters[3], norm_fn=norm_fn, act_fn=act_fn, indice_key='res3'
+            ))
+        self.conv3 = spconv.SparseSequential(*conv3_list)
+
+        # conv4
+        conv4_list = [
+            # [400, 352, 11] <- [200, 176, 5]
+            block(num_filters[3], num_filters[4], 3, norm_fn=norm_fn, stride=2, padding=(0, 1, 1), indice_key='spconv4',
+                  conv_type='spconv'),
+        ]
+        for k in range(layer_nums[4] - 1):
+            conv4_list.append(SparseBasicBlock(
+                num_filters[4], num_filters[4], norm_fn=norm_fn, act_fn=act_fn, indice_key='res4'
+            ))
+        self.conv4 = spconv.SparseSequential(*conv4_list)
+
+        last_pad = 0
+        last_pad = self.model_cfg.get('last_pad', last_pad)
+        self.conv_out = spconv.SparseSequential(
+            # [200, 150, 5] -> [200, 150, 2]
+            spconv.SparseConv3d(num_filters[4], num_filters[5], (3, 1, 1), stride=(2, 1, 1), padding=last_pad,
+                                bias=False, indice_key='spconv_down2'),
+            norm_fn(num_filters[5]))
+
+        if use_feat_adapt_single is True:
+            # the feature adaptation layer is used to adapt the feature dimension of the student to the teacher
+            self.feat_adapt_single = spconv.SparseSequential(
+                spconv.SparseConv3d(num_filters[5], 128, 1, stride=1, padding=0),
+                nn.ReLU())
+            self.feat_adapt_single[0].bias.requires_grad = True
+            self.feat_adapt_single[0].weight.requires_grad = True
+            nn.init.zeros_(self.feat_adapt_single[0].bias.data)
+            nn.init.kaiming_normal_(self.feat_adapt_single[0].weight.data)
+            # self.feat_adapt_single[0].bias.data.fill_(0.)
+            # self.feat_adapt_single[0].weight.data.fill_(1.)
+
+        self.final_act = act_fn()
+
+        self.num_point_features = num_filters[5]
+        self.backbone_channels = {
+            'x_conv1': num_filters[1],
+            'x_conv2': num_filters[2],
+            'x_conv3': num_filters[3],
+            'x_conv4': num_filters[4]
+        }
+
+    def forward(self, batch_dict):
+        """
+        Args:
+            batch_dict:
+                batch_size: int
+                vfe_features: (num_voxels, C)
+                voxel_coords: (num_voxels, 4), [batch_idx, z_idx, y_idx, x_idx]
+        Returns:
+            batch_dict:
+                encoded_spconv_tensor: sparse tensor
+        """
+
+        def mask_points_by_range(points, limit_range_min, limit_range_max):
+            mask = (points[:, 0] >= limit_range_min[0]) & (points[:, 0] <= limit_range_max[0]) \
+                   & (points[:, 1] >= limit_range_min[1]) & (points[:, 1] <= limit_range_max[1]) \
+                   & (points[:, 2] >= limit_range_min[2]) & (points[:, 2] <= limit_range_max[2])
+            return mask
+
+        # Fixed defined:
+        fm_stride = {
+            'x_conv1': 1,
+            'x_conv2': 2,
+            'x_conv3': 4,
+            'x_conv4': 8,
+        }
+        point_cloud_range = torch.Tensor([-51.2, -51.2, -5.0, 51.2, 51.2, 3.0])
+        voxel_size = torch.Tensor([0.1, 0.1, 0.2])
+
+        voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
+        batch_size = batch_dict['batch_size']
+        points = batch_dict['points'][:, 1:4]
+        gtboxes = batch_dict['gt_boxes'][0]
+
+        shape_iter = 0
+        voxel_mask_list = []
+        if gtboxes.shape[0] >= 1:
+            for i in range(gtboxes.shape[0]):
+                range_max_x = gtboxes[i, 0] + gtboxes[i, 3] / 2
+                range_max_y = gtboxes[i, 1] + gtboxes[i, 4] / 2
+                range_max_z = gtboxes[i, 2] + gtboxes[i, 5] / 2
+                range_min_x = gtboxes[i, 0] - gtboxes[i, 3] / 2
+                range_min_y = gtboxes[i, 1] - gtboxes[i, 4] / 2
+                range_min_z = gtboxes[i, 2] - gtboxes[i, 5] / 2
+                limit_range_min = torch.Tensor([range_min_x, range_min_y, range_min_z])
+                limit_range_max = torch.Tensor([range_max_x, range_max_y, range_max_z])
+                limit_range_max += 1
+                limit_range_min -= 1
+                mask = mask_points_by_range(points, limit_range_min, limit_range_max)
+
+                pts_imp = points[mask]
+                coords_imp_ = torch.floor(
+                    (pts_imp - point_cloud_range[0:3].to('cuda:0')) / voxel_size.to('cuda:0'))  # / feature_map_stride!!
+                coords_imp = torch.ones(coords_imp_.shape)
+                coords_imp[:, 0] = coords_imp_[:, 2]
+                coords_imp[:, 1] = coords_imp_[:, 1]
+                coords_imp[:, 2] = coords_imp_[:, 0]
+
+                # Here weiter - get the corresponding voxel coordinates:
+                voxel_coords_ = voxel_coords[:, 1:]
+                voxel_mask = (voxel_coords_[:, None] == coords_imp.to('cuda:0')).all(-1).any(-1).nonzero().flatten()
+                voxel_mask_list.append(voxel_mask)
+                imp_features = voxel_features[voxel_mask]
+                shape_iter += imp_features.shape[0]
+
+                if imp_features.shape[0] >= 1:
+                    fn = ('/home/niko/fm_observation_Second/layer_0/imp/' +
+                          batch_dict['metadata'][0]['token'] + '_{}'.format(i))
+                    torch.save(imp_features, fn)
+
+            bool_mask = torch.ones(voxel_features.shape[0]).to(torch.bool)
+            mask_imp = torch.cat(voxel_mask_list)
+            bool_mask[mask_imp] = False
+            fea_no_imp = voxel_features[bool_mask]
+
+            fn = ('/home/niko/fm_observation_Second/layer_0/noimp/' +
+                  batch_dict['metadata'][0]['token'])
+            torch.save(fea_no_imp, fn)
+
+        # Reminder: Loading Files: list_ = glob.glob("/home/nleuze/promotion/code/ieee_sensors24/VoxelNeXt/fm_observation/layer0/imp/{}*".format(batch_dict['metadata'][0]['token']))
+
+        if self.entropy_thresh is None:
+            self.entropy_thresh = 1.0
+
+        """
+        :: WITH ENTROPY
+        """
+        start_time_entropy = time.time()
+        input_sp_tensor = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+        x = self.conv_input(input_sp_tensor)
+        x_conv1 = self.conv1(x)
+
+        """
+        :: Distribution Observation -- Feature Map 1
+        """
+        shape_iter = 0
+        voxel_mask_list = []
+        voxel_features_conv1 = x_conv1.features
+        if gtboxes.shape[0] >= 1:
+            for i in range(gtboxes.shape[0]):
+                range_max_x = gtboxes[i, 0] + gtboxes[i, 3] / 2
+                range_max_y = gtboxes[i, 1] + gtboxes[i, 4] / 2
+                range_max_z = gtboxes[i, 2] + gtboxes[i, 5] / 2
+                range_min_x = gtboxes[i, 0] - gtboxes[i, 3] / 2
+                range_min_y = gtboxes[i, 1] - gtboxes[i, 4] / 2
+                range_min_z = gtboxes[i, 2] - gtboxes[i, 5] / 2
+                limit_range_min = torch.Tensor([range_min_x, range_min_y, range_min_z])
+                limit_range_max = torch.Tensor([range_max_x, range_max_y, range_max_z])
+                limit_range_max += 1
+                limit_range_min -= 1
+                mask = mask_points_by_range(points, limit_range_min, limit_range_max)
+
+                pts_imp = points[mask]
+                coords_imp_ = torch.floor(
+                    (pts_imp - point_cloud_range[0:3].to('cuda:0')) / voxel_size.to('cuda:0') / fm_stride[
+                        'x_conv1'])  # / feature_map_stride!!
+                coords_imp = torch.ones(coords_imp_.shape)
+                coords_imp[:, 0] = coords_imp_[:, 2]
+                coords_imp[:, 1] = coords_imp_[:, 1]
+                coords_imp[:, 2] = coords_imp_[:, 0]
+
+                # Here weiter - get the corresponding voxel coordinates:
+                voxel_coords_ = x_conv1.indices[:, 1:]
+                voxel_mask = (voxel_coords_[:, None] == coords_imp.to('cuda:0')).all(-1).any(-1).nonzero().flatten()
+                voxel_mask_list.append(voxel_mask)
+                imp_features = voxel_features_conv1[
+                    voxel_mask]  # @Nico Reminder: possible optimization when only using features with huge number of points - more closer analysis of the scene
+                shape_iter += imp_features.shape[0]
+
+                if imp_features.shape[0] >= 1:
+                    dir = '/home/niko/fm_observation_Second/layer_1/imp/'
+                    fn = f"{batch_dict['metadata'][0]['token'] + '_{}'.format(i)}"
+                    os.makedirs(dir, exist_ok=True)
+                    torch.save(imp_features, os.path.join(dir, fn))
+
+            bool_mask = torch.ones(voxel_features_conv1.shape[0]).to(torch.bool)
+            mask_imp = torch.cat(voxel_mask_list)
+            bool_mask[mask_imp] = False
+            fea_no_imp = voxel_features_conv1[bool_mask]
+            dir = '/home/niko/fm_observation_Second/layer_1/noimp/'
+            fn = f"{batch_dict['metadata'][0]['token']}"
+            os.makedirs(dir, exist_ok=True)
+            torch.save(fea_no_imp, os.path.join(dir, fn))
+
+        x_conv2 = self.conv2(x_conv1)
+
+        """
+        :: Distribution Observation -- Feature Map 2
+        """
+        shape_iter = 0
+        voxel_mask_list = []
+        voxel_features_conv2 = x_conv2.features
+        if gtboxes.shape[0] >= 1:
+            for i in range(gtboxes.shape[0]):
+                range_max_x = gtboxes[i, 0] + gtboxes[i, 3] / 2
+                range_max_y = gtboxes[i, 1] + gtboxes[i, 4] / 2
+                range_max_z = gtboxes[i, 2] + gtboxes[i, 5] / 2
+                range_min_x = gtboxes[i, 0] - gtboxes[i, 3] / 2
+                range_min_y = gtboxes[i, 1] - gtboxes[i, 4] / 2
+                range_min_z = gtboxes[i, 2] - gtboxes[i, 5] / 2
+                limit_range_min = torch.Tensor([range_min_x, range_min_y, range_min_z])
+                limit_range_max = torch.Tensor([range_max_x, range_max_y, range_max_z])
+                limit_range_max += 1
+                limit_range_min -= 1
+                mask = mask_points_by_range(points, limit_range_min, limit_range_max)
+
+                pts_imp = points[mask]
+                coords_imp_ = torch.floor(
+                    (pts_imp - point_cloud_range[0:3].to('cuda:0')) / voxel_size.to('cuda:0') / fm_stride['x_conv2'])
+                coords_imp = torch.ones(coords_imp_.shape)
+                coords_imp[:, 0] = coords_imp_[:, 2]
+                coords_imp[:, 1] = coords_imp_[:, 1]
+                coords_imp[:, 2] = coords_imp_[:, 0]
+
+                # Here weiter - get the corresponding voxel coordinates:
+                voxel_coords_ = x_conv2.indices[:, 1:]
+                voxel_mask = (voxel_coords_[:, None] == coords_imp.to('cuda:0')).all(-1).any(-1).nonzero().flatten()
+                voxel_mask_list.append(voxel_mask)
+                imp_features = voxel_features_conv2[voxel_mask]
+                shape_iter += imp_features.shape[0]
+
+                if imp_features.shape[0] >= 1:
+                    dir = '/home/niko/fm_observation_Second/layer_2/imp/'
+                    fn = f"{batch_dict['metadata'][0]['token'] + '_{}'.format(i)}"
+                    os.makedirs(dir, exist_ok=True)
+                    torch.save(imp_features, os.path.join(dir, fn))
+
+            bool_mask = torch.ones(voxel_features_conv2.shape[0]).to(torch.bool)
+            mask_imp = torch.cat(voxel_mask_list)
+            bool_mask[mask_imp] = False
+            fea_no_imp = voxel_features_conv2[bool_mask]
+            dir = '/home/niko/fm_observation_Second/layer_2/noimp/'
+            fn = f"{batch_dict['metadata'][0]['token']}"
+            os.makedirs(dir, exist_ok=True)
+            torch.save(fea_no_imp, os.path.join(dir, fn))
+
+        x_conv3 = self.conv3(x_conv2)
+
+        """
+        :: Distribution Observation -- Feature Map 3
+        """
+        shape_iter = 0
+        voxel_mask_list = []
+        voxel_features_conv3 = x_conv3.features
+        if gtboxes.shape[0] >= 1:
+            for i in range(gtboxes.shape[0]):
+                range_max_x = gtboxes[i, 0] + gtboxes[i, 3] / 2
+                range_max_y = gtboxes[i, 1] + gtboxes[i, 4] / 2
+                range_max_z = gtboxes[i, 2] + gtboxes[i, 5] / 2
+                range_min_x = gtboxes[i, 0] - gtboxes[i, 3] / 2
+                range_min_y = gtboxes[i, 1] - gtboxes[i, 4] / 2
+                range_min_z = gtboxes[i, 2] - gtboxes[i, 5] / 2
+                limit_range_min = torch.Tensor([range_min_x, range_min_y, range_min_z])
+                limit_range_max = torch.Tensor([range_max_x, range_max_y, range_max_z])
+                limit_range_max += 1
+                limit_range_min -= 1
+                mask = mask_points_by_range(points, limit_range_min, limit_range_max)
+
+                pts_imp = points[mask]
+                coords_imp_ = torch.floor(
+                    (pts_imp - point_cloud_range[0:3].to('cuda:0')) / voxel_size.to('cuda:0') / fm_stride['x_conv3'])
+                coords_imp = torch.ones(coords_imp_.shape)
+                coords_imp[:, 0] = coords_imp_[:, 2]
+                coords_imp[:, 1] = coords_imp_[:, 1]
+                coords_imp[:, 2] = coords_imp_[:, 0]
+
+                # Here weiter - get the corresponding voxel coordinates:
+                voxel_coords_ = x_conv3.indices[:, 1:]
+                voxel_mask = (voxel_coords_[:, None] == coords_imp.to('cuda:0')).all(-1).any(-1).nonzero().flatten()
+                voxel_mask_list.append(voxel_mask)
+                imp_features = voxel_features_conv3[voxel_mask]
+                shape_iter += imp_features.shape[0]
+
+                if imp_features.shape[0] >= 1:
+                    dir = '/home/niko/fm_observation_Second/layer_3/imp/'
+                    fn = f"{batch_dict['metadata'][0]['token'] + '_{}'.format(i)}"
+                    os.makedirs(dir, exist_ok=True)
+                    torch.save(imp_features, os.path.join(dir, fn))
+
+            bool_mask = torch.ones(voxel_features_conv3.shape[0]).to(torch.bool)
+            mask_imp = torch.cat(voxel_mask_list)
+            bool_mask[mask_imp] = False
+            fea_no_imp = voxel_features_conv3[bool_mask]
+            dir = '/home/niko/fm_observation_Second/layer_3/noimp/'
+            fn = f"{batch_dict['metadata'][0]['token']}"
+            os.makedirs(dir, exist_ok=True)
+            torch.save(fea_no_imp, os.path.join(dir, fn))
+
+        x_conv4 = self.conv4(x_conv3)
+
+        """
+        :: Distribution Observation -- Feature Map 4
+        """
+        shape_iter = 0
+        voxel_mask_list = []
+        voxel_features_conv4 = x_conv4.features
+        if gtboxes.shape[0] >= 1:
+            for i in range(gtboxes.shape[0]):
+                range_max_x = gtboxes[i, 0] + gtboxes[i, 3] / 2
+                range_max_y = gtboxes[i, 1] + gtboxes[i, 4] / 2
+                range_max_z = gtboxes[i, 2] + gtboxes[i, 5] / 2
+                range_min_x = gtboxes[i, 0] - gtboxes[i, 3] / 2
+                range_min_y = gtboxes[i, 1] - gtboxes[i, 4] / 2
+                range_min_z = gtboxes[i, 2] - gtboxes[i, 5] / 2
+                limit_range_min = torch.Tensor([range_min_x, range_min_y, range_min_z])
+                limit_range_max = torch.Tensor([range_max_x, range_max_y, range_max_z])
+                limit_range_max += 1
+                limit_range_min -= 1
+                mask = mask_points_by_range(points, limit_range_min, limit_range_max)
+
+                pts_imp = points[mask]
+                coords_imp_ = torch.floor(
+                    (pts_imp - point_cloud_range[0:3].to('cuda:0')) / voxel_size.to('cuda:0') / fm_stride['x_conv4'])
+                coords_imp = torch.ones(coords_imp_.shape)
+                coords_imp[:, 0] = coords_imp_[:, 2]
+                coords_imp[:, 1] = coords_imp_[:, 1]
+                coords_imp[:, 2] = coords_imp_[:, 0]
+
+                # Here weiter - get the corresponding voxel coordinates:
+                voxel_coords_ = x_conv4.indices[:, 1:]
+                voxel_mask = (voxel_coords_[:, None] == coords_imp.to('cuda:0')).all(-1).any(-1).nonzero().flatten()
+                voxel_mask_list.append(voxel_mask)
+                imp_features = voxel_features_conv4[voxel_mask]
+                shape_iter += imp_features.shape[0]
+
+                dir = '/home/niko/fm_observation_Second/layer_4/imp/'
+                fn = f"{batch_dict['metadata'][0]['token'] + '_{}'.format(i)}"
+                os.makedirs(dir, exist_ok=True)
+                torch.save(imp_features, os.path.join(dir, fn))
+
+            bool_mask = torch.ones(voxel_features_conv4.shape[0]).to(torch.bool)
+            mask_imp = torch.cat(voxel_mask_list)
+            bool_mask[mask_imp] = False
+            fea_no_imp = voxel_features_conv4[bool_mask]
+            dir = '/home/niko/fm_observation_Second/layer_4/noimp/'
+            fn = f"{batch_dict['metadata'][0]['token']}"
+            os.makedirs(dir, exist_ok=True)
+            torch.save(fea_no_imp, os.path.join(dir, fn))
+        else:
+            self.check_gts += 1
+            print('noGT ' + '+ ' * 15, self.check_gts)
+
+        out = self.conv_out(x_conv4)
+
+        end_time_entropy = time.time() - start_time_entropy
+
+        # if student, insert feature adaptation layer
+        if getattr(self, 'feat_adapt_single', None):
+            self.feat_adapt_single(self.conv_out[0](x_conv4))
+
+        batch_dict.update({
+            'encoded_spconv_tensor': out,
+            'encoded_spconv_tensor_stride': 8,
+        })
+
+        # comment to save memory
+        batch_dict.update({
+            'multi_scale_3d_features': {
+                'x_conv1': x_conv1,
+                'x_conv2': x_conv2,
+                'x_conv3': x_conv3,
+                'x_conv4': x_conv4,
+            }
+        })
+
+        batch_dict.update({
+            'multi_scale_3d_strides': {
+                'x_conv1': 1,
+                'x_conv2': 2,
+                'x_conv3': 4,
+                'x_conv4': 8,
+            }
+        })
+
+        return batch_dict
+
+
 class VoxelResBackBone8x_old(nn.Module):
     def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
         super().__init__()
