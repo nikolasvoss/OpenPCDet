@@ -23,12 +23,13 @@ import time
 from torch.nn.utils import clip_grad_norm_
 from pcdet.utils import common_utils, commu_utils
 import visual_utils.vis_feature_maps as visfm
+import local_paths
 
 
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
-    parser.add_argument('--cfg_file', type=str, default='/home/niko/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_second_multihead.yaml', help='specify the config for training')
-    parser.add_argument('--output_dir', type=str, default=None, help='specify an output directory if needed')
+    parser.add_argument('--cfg_file', type=str, default=local_paths.cfg_file_train, help='specify the config for training')
+    parser.add_argument('--output_dir', type=str, default=local_paths.output_dir_train, help='specify an output directory if needed')
     parser.add_argument('--batch_size', type=int, default=8, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=15, required=False, help='number of epochs to train for')
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
@@ -38,7 +39,7 @@ def parse_config():
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--sync_bn', action='store_true', default=False, help='whether to use sync bn')
-    parser.add_argument('--fix_random_seed', action='store_true', default=False, help='')
+    parser.add_argument('--fix_random_seed', action='store_true', default=True, help='')
     parser.add_argument('--ckpt_save_interval', type=int, default=1, help='number of training epochs')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
     parser.add_argument('--max_ckpt_save_num', type=int, default=30, help='max number of saved checkpoint')
@@ -56,7 +57,7 @@ def parse_config():
     parser.add_argument('--logger_iter_interval', type=int, default=50, help='')
     parser.add_argument('--ckpt_save_time_interval', type=int, default=300, help='in terms of seconds')
     parser.add_argument('--wo_gpu_stat', action='store_true', help='')
-    parser.add_argument('--use_amp', default=False, action='store_true', help='use mix precision training')
+    parser.add_argument('--use_amp', default=True, action='store_true', help='use mix precision training')
 
     parser.add_argument('--layer0_name_ae', type=str, default="backbone_3d.full_autoencoder.0", help='layer0 name for teacher')
     parser.add_argument('--layer1_name_ae', type=str, default="backbone_3d.full_autoencoder.6", help='layer1 name for teacher')
@@ -146,10 +147,10 @@ def main():
 
     ##################################################################
     # create hooks for autoencoder
-    visfm.registerHookForLayer(model, args.layer0_name_ae)
-    logger.info('Created student hook for layer: %s' % args.layer0_name_ae)
-    visfm.registerHookForLayer(model, args.layer1_name_ae)
-    logger.info('Created teacher hook for layer: %s' % args.layer1_name_ae)
+    # visfm.registerHookForLayer(model, args.layer0_name_ae)
+    # logger.info('Created student hook for layer: %s' % args.layer0_name_ae)
+    # visfm.registerHookForLayer(model, args.layer1_name_ae)
+    # logger.info('Created teacher hook for layer: %s' % args.layer1_name_ae)
 
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 
@@ -285,7 +286,7 @@ def train_model_w_eval(model, optimizer, train_loader, model_func, lr_scheduler,
 
             augment_disable_flag = disable_augmentation_hook(hook_config, dataloader_iter, total_epochs, cur_epoch, cfg,
                                                              augment_disable_flag, logger)
-            accumulated_iter = train_one_epoch_w_ae(
+            accumulated_iter = train_one_epoch(
                 model, optimizer, train_loader, model_func,
                 lr_scheduler=cur_scheduler,
                 accumulated_iter=accumulated_iter, optim_cfg=optim_cfg,
