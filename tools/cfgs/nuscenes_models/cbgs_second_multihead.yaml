@@ -12,7 +12,7 @@ MODEL:
         NAME: MeanVFE
 
     BACKBONE_3D:
-        NAME: VoxelResBackBone8xEntropyImpNotImpGen
+        NAME: VoxelResBackBone8xImpNotImpGen
         WIDTH: 1.0
         FEAT_ADAPT_SINGLE: False
         FEAT_ADAPT_AUTOENCODER: False
