@@ -481,10 +481,9 @@ class VoxelResBackBone8x(nn.Module):
         x_conv3 = self.conv3(x_conv2)
         x_conv4 = self.conv4(x_conv3)
 
-        if getattr(self, 'top_percentage', None):
+        if getattr(self, 'top_percentage', None) or self.top_percentage < 1.0:
             topn_indices = torch.topk(entropyOfFmapsSparse(x_conv4.features),
                                       int(x_conv4.features.shape[0] * self.top_percentage),
-        if getattr(self, 'top_percentage', None) or self.top_percentage < 1.0:
                                       dim=0,
                                       largest=True,
                                       sorted=False).indices
