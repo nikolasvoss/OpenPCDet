@@ -478,30 +478,28 @@ class VoxelResBackBone8x(nn.Module):
             batch_size=batch_size
         )
         x = self.conv_input(input_sp_tensor)
-
         x_conv1 = self.conv1(x)
         x_conv2 = self.conv2(x_conv1)
         x_conv3 = self.conv3(x_conv2)
         x_conv4 = self.conv4(x_conv3)
 
-        if getattr(self, 'top_percentage', None):
-            topn_indices = torch.topk(entropyOfFmapsSparse(x_conv4.features),
-                                      int(x_conv4.features.shape[0] * self.top_percentage),
-        if getattr(self, 'top_percentage', None) or self.top_percentage < 1.0:
-                                      dim=0,
-                                      largest=True,
-                                      sorted=False).indices
-            x_topn = spconv.SparseConvTensor(
-                features=x_conv4.features[topn_indices],
-                indices=x_conv4.indices[topn_indices],
-                spatial_shape=x_conv4.spatial_shape,
-                batch_size=x_conv4.batch_size
-            )
-            out = self.conv_out(x_topn)
-        else:
-            # for detection head
-            # [200, 176, 5] -> [200, 176, 2]
-            out = self.conv_out(x_conv4)
+        # if getattr(self, 'top_percentage', None) or self.top_percentage < 1.0:
+        #     topn_indices = torch.topk(entropyOfFmapsSparse(x_conv4.features),
+        #                               int(x_conv4.features.shape[0] * self.top_percentage),
+        #                               dim=0,
+        #                               largest=True,
+        #                               sorted=False).indices
+        #     x_topn = spconv.SparseConvTensor(
+        #         features=x_conv4.features[topn_indices],
+        #         indices=x_conv4.indices[topn_indices],
+        #         spatial_shape=x_conv4.spatial_shape,
+        #         batch_size=x_conv4.batch_size
+        #     )
+        #     out = self.conv_out(x_topn)
+        # else:
+        #     # for detection head
+        #     # [200, 176, 5] -> [200, 176, 2]
+        out = self.conv_out(x_conv4)
 
         # if student, insert feature adaptation layer
         if getattr(self, 'feat_adapt_single', None):
