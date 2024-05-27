@@ -1302,6 +1302,9 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
         self.model_cfg = model_cfg
         norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
 
+        self.entropy_thresh = None
+        self.check_gts = 0
+
         # currently not used
         # act_fn = get_act_layer(self.model_cfg.get('ACT_FN', 'ReLU'))
         act_fn = nn.ReLU
@@ -1731,23 +1734,23 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
         })
 
         # comment to save memory
-        batch_dict.update({
-            'multi_scale_3d_features': {
-                'x_conv1': x_conv1,
-                'x_conv2': x_conv2,
-                'x_conv3': x_conv3,
-                'x_conv4': x_conv4,
-            }
-        })
+        # batch_dict.update({
+        #     'multi_scale_3d_features': {
+        #         'x_conv1': x_conv1,
+        #         'x_conv2': x_conv2,
+        #         'x_conv3': x_conv3,
+        #         'x_conv4': x_conv4,
+        #     }
+        # })
 
-        batch_dict.update({
-            'multi_scale_3d_strides': {
-                'x_conv1': 1,
-                'x_conv2': 2,
-                'x_conv3': 4,
-                'x_conv4': 8,
-            }
-        })
+        # batch_dict.update({
+        #     'multi_scale_3d_strides': {
+        #         'x_conv1': 1,
+        #         'x_conv2': 2,
+        #         'x_conv3': 4,
+        #         'x_conv4': 8,
+        #     }
+        # })
 
         return batch_dict
 
