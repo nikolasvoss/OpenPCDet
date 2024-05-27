@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import numpy as np
 
+import time
+
 from ...utils.spconv_utils import replace_feature, spconv
 from tools.visual_utils.vis_feature_maps import entropyOfFmapsSparse
 
@@ -527,6 +529,764 @@ class VoxelResBackBone8x(nn.Module):
                 'x_conv4': x_conv4,
             }
         })
+        # TODO: Teacher stuff not used yet
+        # if getattr(self, 'is_teacher', None):
+        #     batch_dict.update({
+        #         'encoded_spconv_tensor_pre-act': pre_act_encoded_spconv_tensor
+        #     })
+
+        return batch_dict
+
+
+# Note: When classes are added to backbone_3d.py they must be added to pcdet/models/backbones_3d/__init__.py aswell
+class VoxelResBackBone8xEntropy1(nn.Module):
+    def __init__(self, model_cfg, input_channels, grid_size, **kwargs):
+        super().__init__()
+        self.model_cfg = model_cfg
+        norm_fn = partial(nn.BatchNorm1d, eps=1e-3, momentum=0.01)
+
+        # currently not used
+        # act_fn = get_act_layer(self.model_cfg.get('ACT_FN', 'ReLU'))
+        act_fn = nn.ReLU
+
+        self.sparse_shape = grid_size[::-1] + [1, 0, 0]
+
+        if model_cfg.get('NUM_FILTERS', None):
+            num_filters = model_cfg.NUM_FILTERS
+        else:
+            num_filters = [16, 16, 32, 64, 128, 128]
+
+        if model_cfg.get('WIDTH', None):
+            num_filters = (np.array(num_filters, dtype=np.int32) * model_cfg.WIDTH).astype(int)
+
+        if model_cfg.get('LAYER_NUMS', None):
+            layer_nums = model_cfg.LAYER_NUMS
+        else:
+            layer_nums = [1, 2, 3, 3, 3, 1]
+
+        if model_cfg.get('FEAT_ADAPT_SINGLE', False):
+            use_feat_adapt_single = model_cfg.FEAT_ADAPT_SINGLE
+        else:
+            use_feat_adapt_single = False
+
+        if model_cfg.get('FEAT_ADAPT_AUTOENCODER', False):
+            use_feat_adapt_autoencoder = model_cfg.FEAT_ADAPT_AUTOENCODER
+        else:
+            use_feat_adapt_autoencoder = False
+
+        if model_cfg.get('FULL_AUTOENCODER', False):
+            use_full_autoencoder = model_cfg.FULL_AUTOENCODER
+        else:
+            use_full_autoencoder = False
+
+        if model_cfg.get('TOP_PERCENTAGE', False):
+            self.top_percentage = model_cfg.TOP_PERCENTAGE
+
+        self.conv_input = spconv.SparseSequential(
+            spconv.SubMConv3d(input_channels, num_filters[0], 3, padding=1, bias=False, indice_key='subm1'),
+            norm_fn(num_filters[0]),
+            act_fn(),
+        )
+        block = partial(post_act_block, act_fn=act_fn)
+
+        # conv1
+        conv1_list = [
+            SparseBasicBlock(num_filters[0], num_filters[1], norm_fn=norm_fn, act_fn=act_fn, indice_key='res1')]
+        for k in range(layer_nums[1] - 1):
+            conv1_list.append(
+                SparseBasicBlock(num_filters[1], num_filters[1], norm_fn=norm_fn, act_fn=act_fn, indice_key='res1'))
+        self.conv1 = spconv.SparseSequential(*conv1_list)
+
+        # conv2
+        conv2_list = [
+            # [1600, 1408, 41] <- [800, 704, 21]
+            block(num_filters[1], num_filters[2], 3, norm_fn=norm_fn, stride=2, padding=1, indice_key='spconv2',
+                  conv_type='spconv'),
+        ]
+        for k in range(layer_nums[2] - 1):
+            conv2_list.append(
+                SparseBasicBlock(num_filters[2], num_filters[2], norm_fn=norm_fn, act_fn=act_fn, indice_key='res2'))
+        self.conv2 = spconv.SparseSequential(*conv2_list)
+
+        # conv3
+        conv3_list = [
+            # [800, 704, 21] <- [400, 352, 11]
+            block(num_filters[2], num_filters[3], 3, norm_fn=norm_fn, stride=2, padding=1, indice_key='spconv3',
+                  conv_type='spconv'),
+        ]
+        for k in range(layer_nums[3] - 1):
+            conv3_list.append(SparseBasicBlock(
+                num_filters[3], num_filters[3], norm_fn=norm_fn, act_fn=act_fn, indice_key='res3'
+            ))
+        self.conv3 = spconv.SparseSequential(*conv3_list)
+
+        # conv4
+        conv4_list = [
+            # [400, 352, 11] <- [200, 176, 5]
+            block(num_filters[3], num_filters[4], 3, norm_fn=norm_fn, stride=2, padding=(0, 1, 1), indice_key='spconv4',
+                  conv_type='spconv'),
+        ]
+        for k in range(layer_nums[4] - 1):
+            conv4_list.append(SparseBasicBlock(
+                num_filters[4], num_filters[4], norm_fn=norm_fn, act_fn=act_fn, indice_key='res4'
+            ))
+        self.conv4 = spconv.SparseSequential(*conv4_list)
+
+        last_pad = 0
+        last_pad = self.model_cfg.get('last_pad', last_pad)
+        self.conv_out = spconv.SparseSequential(
+            # [200, 150, 5] -> [200, 150, 2]
+            spconv.SparseConv3d(num_filters[4], num_filters[5], (3, 1, 1), stride=(2, 1, 1), padding=last_pad,
+                                bias=False, indice_key='spconv_down2'),
+            norm_fn(num_filters[5]))
+
+        if use_feat_adapt_single is True:
+            # the feature adaptation layer is used to adapt the feature dimension of the student to the teacher
+            self.feat_adapt_single = spconv.SparseSequential(
+                spconv.SparseConv3d(num_filters[5], 128, 1, stride=1, padding=0),
+                nn.ReLU())
+            self.feat_adapt_single[0].bias.requires_grad = True
+            self.feat_adapt_single[0].weight.requires_grad = True
+            nn.init.zeros_(self.feat_adapt_single[0].bias.data)
+            nn.init.kaiming_normal_(self.feat_adapt_single[0].weight.data)
+            # self.feat_adapt_single[0].bias.data.fill_(0.)
+            # self.feat_adapt_single[0].weight.data.fill_(1.)
+
+        if use_feat_adapt_autoencoder is True:
+            # currently only used for teacher to student adaptation
+            self.feat_adapt_autoencoder = spconv.SparseSequential(
+                spconv.SparseConv3d(num_filters[5], 112, 1, stride=1, padding=0),
+                nn.ReLU(),
+                spconv.SparseConv3d(112, 96, 1, stride=1, padding=0),
+                nn.ReLU())
+
+        if use_full_autoencoder is True:
+            # currently used for teacher only training
+            self.full_autoencoder = spconv.SparseSequential(
+                spconv.SparseConv3d(num_filters[5], 112, 1, stride=1, padding=0),
+                nn.ReLU(),
+                spconv.SparseConv3d(112, 96, 1, stride=1, padding=0),
+                nn.ReLU(),
+                spconv.SparseConv3d(96, 112, 1, stride=1, padding=0),
+                nn.ReLU(),
+                spconv.SparseConv3d(112, num_filters[5], 1, stride=1, padding=0),
+                nn.ReLU())
+
+        self.final_act = act_fn()
+
+        self.num_point_features = num_filters[5]
+        self.backbone_channels = {
+            'x_conv1': num_filters[1],
+            'x_conv2': num_filters[2],
+            'x_conv3': num_filters[3],
+            'x_conv4': num_filters[4]
+        }
+
+    def forward(self, batch_dict):
+        """
+        Args:
+            batch_dict:
+                batch_size: int
+                vfe_features: (num_voxels, C)
+                voxel_coords: (num_voxels, 4), [batch_idx, z_idx, y_idx, x_idx]
+        Returns:
+            batch_dict:
+                encoded_spconv_tensor: sparse tensor
+        """
+        voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
+        batch_size = batch_dict['batch_size']
+
+        """
+        :: WITHOUT ENTROPY FOR TIME CALCS
+        """
+        start_time_wo_ent = time.time()
+        input_sp_tensor_wo_ent = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+        x_wo_ent = self.conv_input(input_sp_tensor_wo_ent)
+
+        x_conv1_wo_ent = self.conv1(x_wo_ent)
+        x_conv2_wo_ent = self.conv2(x_conv1_wo_ent)
+        x_conv3_wo_ent = self.conv3(x_conv2_wo_ent)
+        x_conv4_wo_ent = self.conv4(x_conv3_wo_ent)
+        out_wo_ent = self.conv_out(x_conv4_wo_ent)
+
+        # Observation Memory Consumption:
+        mem_time = time.time()
+        memory_con_wo_ent = (
+            input_sp_tensor_wo_ent.features.element_size() * input_sp_tensor_wo_ent.features.nelement() +
+            input_sp_tensor_wo_ent.indices.element_size() * input_sp_tensor_wo_ent.indices.nelement() +
+            x_wo_ent.features.element_size() * x_wo_ent.features.nelement() +
+            x_wo_ent.indices.element_size() * x_wo_ent.indices.nelement() +
+            x_conv1_wo_ent.features.element_size() * x_conv1_wo_ent.features.nelement() +
+            x_conv1_wo_ent.indices.element_size() * x_conv1_wo_ent.indices.nelement() +
+            x_conv2_wo_ent.features.element_size() * x_conv2_wo_ent.features.nelement() +
+            x_conv2_wo_ent.indices.element_size() * x_conv2_wo_ent.indices.nelement() +
+            x_conv3_wo_ent.features.element_size() * x_conv3_wo_ent.features.nelement() +
+            x_conv3_wo_ent.indices.element_size() * x_conv3_wo_ent.indices.nelement() +
+            x_conv4_wo_ent.features.element_size() * x_conv4_wo_ent.features.nelement() +
+            x_conv4_wo_ent.indices.element_size() * x_conv4_wo_ent.indices.nelement()) * 1e-6
+        end_mem_time = time.time() - mem_time
+
+        end_time_wo_ent = time.time() - start_time_wo_ent - end_mem_time
+
+        """
+        :: WITH ENTROPY FOR TIME CALCS
+        """
+        start_time_entropy = time.time()
+        input_sp_tensor = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+        x = self.conv_input(input_sp_tensor)
+        x_conv1 = self.conv1(x)
+
+        topn_indices = torch.topk(entropyOfFmapsSparse(x_conv1.features),
+                                  int(x_conv1.features.shape[0] * self.top_percentage)).indices
+
+        x_topn = spconv.SparseConvTensor(
+            features=x_conv1.features[topn_indices],
+            indices=x_conv1.indices[topn_indices],
+            spatial_shape=x_conv1.spatial_shape,
+            batch_size=x_conv1.batch_size
+        )
+
+        x_conv2 = self.conv2(x_topn)
+        x_conv3 = self.conv3(x_conv2)
+        x_conv4 = self.conv4(x_conv3)
+        out = self.conv_out(x_conv4)
+
+        # Observation Memory Consumption:
+        mem_time = time.time()
+        memory_con = (
+             input_sp_tensor.features.element_size() * input_sp_tensor.features.nelement() +
+             input_sp_tensor.indices.element_size() * input_sp_tensor.indices.nelement() +
+             x.features.element_size() * x.features.nelement() +
+             x.indices.element_size() * x.indices.nelement() +
+             x_conv1.features.element_size() * x_conv1.features.nelement() +
+             x_conv1.indices.element_size() * x_conv1.indices.nelement() +
+             x_conv2.features.element_size() * x_conv2.features.nelement() +
+             x_conv2.indices.element_size() * x_conv2.indices.nelement() +
+             x_conv3.features.element_size() * x_conv3.features.nelement() +
+             x_conv3.indices.element_size() * x_conv3.indices.nelement() +
+             x_conv4.features.element_size() * x_conv4.features.nelement() +
+             x_conv4.indices.element_size() * x_conv4.indices.nelement()) * 1e-6
+
+        batch_dict.update({
+            'multi_scale_3d_features': {
+                'input_': input_sp_tensor,
+                'x_input': x,
+                'x_conv1': x_conv1,
+                'x_conv2': x_conv2,
+                'x_conv3': x_conv3,
+                'x_conv4': x_conv4,
+            }})
+        end_mem_time = time.time() - mem_time
+
+        end_time_entropy = time.time() - start_time_entropy - end_mem_time
+
+        # if student, insert feature adaptation layer
+        if getattr(self, 'feat_adapt_single', None):
+            self.feat_adapt_single(self.conv_out[0](x_conv4_wo_ent))
+        if getattr(self, 'feat_adapt_autoencoder', None):
+            self.feat_adapt_autoencoder(self.conv_out[0](x_conv4_wo_ent))
+        if getattr(self, 'full_autoencoder', None):
+            self.full_autoencoder(self.conv_out[0](x_conv4_wo_ent))
+
+        # TODO: commented because clone_sp_tensor need modification of spconv_utils.py
+        # if getattr(self, 'is_teacher', None):
+        #     pre_act_encoded_spconv_tensor = clone_sp_tensor(out, batch_size)
+        # out = replace_feature(out, self.final_act(out.features))
+
+        batch_dict.update({
+            'encoded_spconv_tensor': out,
+            'encoded_spconv_tensor_stride': 8,
+        })
+
+        # comment to save memory
+        # batch_dict.update({
+        #     'multi_scale_3d_features': {
+        #         'x_conv1': x_conv1,
+        #         'x_conv2': x_conv2,
+        #         'x_conv3': x_conv3,
+        #         'x_conv4': x_conv4,
+        #     }
+        # })
+
+        # Time & Memory Observation:
+        batch_dict.update({
+            'time_wo_ent': end_time_wo_ent,
+            'time_entropy': end_time_entropy,
+            'memory_con_wo_ent': memory_con_wo_ent,
+            'memory_con': memory_con,
+        })
+
+        # TODO: Teacher stuff not used yet
+        # if getattr(self, 'is_teacher', None):
+        #     batch_dict.update({
+        #         'encoded_spconv_tensor_pre-act': pre_act_encoded_spconv_tensor
+        #     })
+
+        return batch_dict
+
+
+# Note: When classes are added to backbone_3d.py they must be added to pcdet/models/backbones_3d/__init__.py aswell
+class VoxelResBackBone8xEntropy2(VoxelResBackBone8xEntropy1):
+    def forward(self, batch_dict):
+        """
+        Args:
+            batch_dict:
+                batch_size: int
+                vfe_features: (num_voxels, C)
+                voxel_coords: (num_voxels, 4), [batch_idx, z_idx, y_idx, x_idx]
+        Returns:
+            batch_dict:
+                encoded_spconv_tensor: sparse tensor
+        """
+        voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
+        batch_size = batch_dict['batch_size']
+
+        """
+        :: WITHOUT ENTROPY FOR TIME CALCS
+        """
+        start_time_wo_ent = time.time()
+        input_sp_tensor_wo_ent = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+        x_wo_ent = self.conv_input(input_sp_tensor_wo_ent)
+
+        x_conv1_wo_ent = self.conv1(x_wo_ent)
+        x_conv2_wo_ent = self.conv2(x_conv1_wo_ent)
+        x_conv3_wo_ent = self.conv3(x_conv2_wo_ent)
+        x_conv4_wo_ent = self.conv4(x_conv3_wo_ent)
+        out_wo_ent = self.conv_out(x_conv4_wo_ent)
+
+        # Observation Memory Consumption:
+        mem_time = time.time()
+        memory_con_wo_ent = (
+                                    input_sp_tensor_wo_ent.features.element_size() * input_sp_tensor_wo_ent.features.nelement() +
+                                    input_sp_tensor_wo_ent.indices.element_size() * input_sp_tensor_wo_ent.indices.nelement() +
+                                    x_wo_ent.features.element_size() * x_wo_ent.features.nelement() +
+                                    x_wo_ent.indices.element_size() * x_wo_ent.indices.nelement() +
+                                    x_conv1_wo_ent.features.element_size() * x_conv1_wo_ent.features.nelement() +
+                                    x_conv1_wo_ent.indices.element_size() * x_conv1_wo_ent.indices.nelement() +
+                                    x_conv2_wo_ent.features.element_size() * x_conv2_wo_ent.features.nelement() +
+                                    x_conv2_wo_ent.indices.element_size() * x_conv2_wo_ent.indices.nelement() +
+                                    x_conv3_wo_ent.features.element_size() * x_conv3_wo_ent.features.nelement() +
+                                    x_conv3_wo_ent.indices.element_size() * x_conv3_wo_ent.indices.nelement() +
+                                    x_conv4_wo_ent.features.element_size() * x_conv4_wo_ent.features.nelement() +
+                                    x_conv4_wo_ent.indices.element_size() * x_conv4_wo_ent.indices.nelement()) * 1e-6
+        end_mem_time = time.time() - mem_time
+
+        end_time_wo_ent = time.time() - start_time_wo_ent - end_mem_time
+
+        """
+        :: WITH ENTROPY FOR TIME CALCS
+        """
+        start_time_entropy = time.time()
+        input_sp_tensor = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+        x = self.conv_input(input_sp_tensor)
+        x_conv1 = self.conv1(x)
+        x_conv2 = self.conv2(x_conv1)
+
+        topn_indices = torch.topk(entropyOfFmapsSparse(x_conv2.features),
+                                  int(x_conv1.features.shape[0] * self.top_percentage)).indices
+
+        x_topn = spconv.SparseConvTensor(
+            features=x_conv2.features[topn_indices],
+            indices=x_conv2.indices[topn_indices],
+            spatial_shape=x_conv2.spatial_shape,
+            batch_size=x_conv2.batch_size
+        )
+        x_conv3 = self.conv3(x_topn)
+        x_conv4 = self.conv4(x_conv3)
+        out = self.conv_out(x_conv4)
+
+        # Observation Memory Consumption:
+        mem_time = time.time()
+        memory_con = (
+                             input_sp_tensor.features.element_size() * input_sp_tensor.features.nelement() +
+                             input_sp_tensor.indices.element_size() * input_sp_tensor.indices.nelement() +
+                             x.features.element_size() * x.features.nelement() +
+                             x.indices.element_size() * x.indices.nelement() +
+                             x_conv1.features.element_size() * x_conv1.features.nelement() +
+                             x_conv1.indices.element_size() * x_conv1.indices.nelement() +
+                             x_conv2.features.element_size() * x_conv2.features.nelement() +
+                             x_conv2.indices.element_size() * x_conv2.indices.nelement() +
+                             x_conv3.features.element_size() * x_conv3.features.nelement() +
+                             x_conv3.indices.element_size() * x_conv3.indices.nelement() +
+                             x_conv4.features.element_size() * x_conv4.features.nelement() +
+                             x_conv4.indices.element_size() * x_conv4.indices.nelement()) * 1e-6
+
+        batch_dict.update({
+            'multi_scale_3d_features': {
+                'input_': input_sp_tensor,
+                'x_input': x,
+                'x_conv1': x_conv1,
+                'x_conv2': x_conv2,
+                'x_conv3': x_conv3,
+                'x_conv4': x_conv4,
+            }})
+        end_mem_time = time.time() - mem_time
+
+        end_time_entropy = time.time() - start_time_entropy - end_mem_time
+
+        # if student, insert feature adaptation layer
+        if getattr(self, 'feat_adapt_single', None):
+            self.feat_adapt_single(self.conv_out[0](x_conv4_wo_ent))
+        if getattr(self, 'feat_adapt_autoencoder', None):
+            self.feat_adapt_autoencoder(self.conv_out[0](x_conv4_wo_ent))
+        if getattr(self, 'full_autoencoder', None):
+            self.full_autoencoder(self.conv_out[0](x_conv4_wo_ent))
+
+        # TODO: commented because clone_sp_tensor need modification of spconv_utils.py
+        # if getattr(self, 'is_teacher', None):
+        #     pre_act_encoded_spconv_tensor = clone_sp_tensor(out, batch_size)
+        # out = replace_feature(out, self.final_act(out.features))
+
+        batch_dict.update({
+            'encoded_spconv_tensor': out,
+            'encoded_spconv_tensor_stride': 8,
+        })
+
+        # comment to save memory
+        # batch_dict.update({
+        #     'multi_scale_3d_features': {
+        #         'x_conv1': x_conv1,
+        #         'x_conv2': x_conv2,
+        #         'x_conv3': x_conv3,
+        #         'x_conv4': x_conv4,
+        #     }
+        # })
+
+        # Time & Memory Observation:
+        batch_dict.update({
+            'time_wo_ent': end_time_wo_ent,
+            'time_entropy': end_time_entropy,
+            'memory_con_wo_ent': memory_con_wo_ent,
+            'memory_con': memory_con,
+        })
+
+        # TODO: Teacher stuff not used yet
+        # if getattr(self, 'is_teacher', None):
+        #     batch_dict.update({
+        #         'encoded_spconv_tensor_pre-act': pre_act_encoded_spconv_tensor
+        #     })
+
+        return batch_dict
+
+
+# Note: When classes are added to backbone_3d.py they must be added to pcdet/models/backbones_3d/__init__.py aswell
+class VoxelResBackBone8xEntropy3(VoxelResBackBone8xEntropy1):
+    def forward(self, batch_dict):
+        """
+        Args:
+            batch_dict:
+                batch_size: int
+                vfe_features: (num_voxels, C)
+                voxel_coords: (num_voxels, 4), [batch_idx, z_idx, y_idx, x_idx]
+        Returns:
+            batch_dict:
+                encoded_spconv_tensor: sparse tensor
+        """
+        voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
+        batch_size = batch_dict['batch_size']
+
+        """
+        :: WITHOUT ENTROPY FOR TIME CALCS
+        """
+        start_time_wo_ent = time.time()
+        input_sp_tensor_wo_ent = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+        x_wo_ent = self.conv_input(input_sp_tensor_wo_ent)
+
+        x_conv1_wo_ent = self.conv1(x_wo_ent)
+        x_conv2_wo_ent = self.conv2(x_conv1_wo_ent)
+        x_conv3_wo_ent = self.conv3(x_conv2_wo_ent)
+        x_conv4_wo_ent = self.conv4(x_conv3_wo_ent)
+        out_wo_ent = self.conv_out(x_conv4_wo_ent)
+
+        # Observation Memory Consumption:
+        mem_time = time.time()
+        memory_con_wo_ent = (
+                                    input_sp_tensor_wo_ent.features.element_size() * input_sp_tensor_wo_ent.features.nelement() +
+                                    input_sp_tensor_wo_ent.indices.element_size() * input_sp_tensor_wo_ent.indices.nelement() +
+                                    x_wo_ent.features.element_size() * x_wo_ent.features.nelement() +
+                                    x_wo_ent.indices.element_size() * x_wo_ent.indices.nelement() +
+                                    x_conv1_wo_ent.features.element_size() * x_conv1_wo_ent.features.nelement() +
+                                    x_conv1_wo_ent.indices.element_size() * x_conv1_wo_ent.indices.nelement() +
+                                    x_conv2_wo_ent.features.element_size() * x_conv2_wo_ent.features.nelement() +
+                                    x_conv2_wo_ent.indices.element_size() * x_conv2_wo_ent.indices.nelement() +
+                                    x_conv3_wo_ent.features.element_size() * x_conv3_wo_ent.features.nelement() +
+                                    x_conv3_wo_ent.indices.element_size() * x_conv3_wo_ent.indices.nelement() +
+                                    x_conv4_wo_ent.features.element_size() * x_conv4_wo_ent.features.nelement() +
+                                    x_conv4_wo_ent.indices.element_size() * x_conv4_wo_ent.indices.nelement()) * 1e-6
+        end_mem_time = time.time() - mem_time
+
+        end_time_wo_ent = time.time() - start_time_wo_ent - end_mem_time
+
+        """
+        :: WITH ENTROPY FOR TIME CALCS
+        """
+        start_time_entropy = time.time()
+        input_sp_tensor = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+        x = self.conv_input(input_sp_tensor)
+        x_conv1 = self.conv1(x)
+        x_conv2 = self.conv2(x_conv1)
+        x_conv3 = self.conv3(x_conv2)
+        topn_indices = torch.topk(entropyOfFmapsSparse(x_conv3.features),
+                                  int(x_conv3.features.shape[0] * self.top_percentage)).indices
+
+        x_topn = spconv.SparseConvTensor(
+            features=x_conv3.features[topn_indices],
+            indices=x_conv3.indices[topn_indices],
+            spatial_shape=x_conv3.spatial_shape,
+            batch_size=x_conv3.batch_size
+        )
+        x_conv4 = self.conv4(x_topn)
+        out = self.conv_out(x_conv4)
+
+        # Observation Memory Consumption:
+        mem_time = time.time()
+        memory_con = (
+                             input_sp_tensor.features.element_size() * input_sp_tensor.features.nelement() +
+                             input_sp_tensor.indices.element_size() * input_sp_tensor.indices.nelement() +
+                             x.features.element_size() * x.features.nelement() +
+                             x.indices.element_size() * x.indices.nelement() +
+                             x_conv1.features.element_size() * x_conv1.features.nelement() +
+                             x_conv1.indices.element_size() * x_conv1.indices.nelement() +
+                             x_conv2.features.element_size() * x_conv2.features.nelement() +
+                             x_conv2.indices.element_size() * x_conv2.indices.nelement() +
+                             x_conv3.features.element_size() * x_conv3.features.nelement() +
+                             x_conv3.indices.element_size() * x_conv3.indices.nelement() +
+                             x_conv4.features.element_size() * x_conv4.features.nelement() +
+                             x_conv4.indices.element_size() * x_conv4.indices.nelement()) * 1e-6
+
+        batch_dict.update({
+            'multi_scale_3d_features': {
+                'input_': input_sp_tensor,
+                'x_input': x,
+                'x_conv1': x_conv1,
+                'x_conv2': x_conv2,
+                'x_conv3': x_conv3,
+                'x_conv4': x_conv4,
+            }})
+        end_mem_time = time.time() - mem_time
+
+        end_time_entropy = time.time() - start_time_entropy - end_mem_time
+
+        # if student, insert feature adaptation layer
+        if getattr(self, 'feat_adapt_single', None):
+            self.feat_adapt_single(self.conv_out[0](x_conv4_wo_ent))
+        if getattr(self, 'feat_adapt_autoencoder', None):
+            self.feat_adapt_autoencoder(self.conv_out[0](x_conv4_wo_ent))
+        if getattr(self, 'full_autoencoder', None):
+            self.full_autoencoder(self.conv_out[0](x_conv4_wo_ent))
+
+        # TODO: commented because clone_sp_tensor need modification of spconv_utils.py
+        # if getattr(self, 'is_teacher', None):
+        #     pre_act_encoded_spconv_tensor = clone_sp_tensor(out, batch_size)
+        # out = replace_feature(out, self.final_act(out.features))
+
+        batch_dict.update({
+            'encoded_spconv_tensor': out,
+            'encoded_spconv_tensor_stride': 8,
+        })
+
+        # comment to save memory
+        # batch_dict.update({
+        #     'multi_scale_3d_features': {
+        #         'x_conv1': x_conv1,
+        #         'x_conv2': x_conv2,
+        #         'x_conv3': x_conv3,
+        #         'x_conv4': x_conv4,
+        #     }
+        # })
+
+        # Time & Memory Observation:
+        batch_dict.update({
+            'time_wo_ent': end_time_wo_ent,
+            'time_entropy': end_time_entropy,
+            'memory_con_wo_ent': memory_con_wo_ent,
+            'memory_con': memory_con,
+        })
+
+        # TODO: Teacher stuff not used yet
+        # if getattr(self, 'is_teacher', None):
+        #     batch_dict.update({
+        #         'encoded_spconv_tensor_pre-act': pre_act_encoded_spconv_tensor
+        #     })
+
+        return batch_dict
+
+
+# Note: When classes are added to backbone_3d.py they must be added to pcdet/models/backbones_3d/__init__.py aswell
+class VoxelResBackBone8xEntropy4(VoxelResBackBone8xEntropy1):
+    def forward(self, batch_dict):
+        """
+        Args:
+            batch_dict:
+                batch_size: int
+                vfe_features: (num_voxels, C)
+                voxel_coords: (num_voxels, 4), [batch_idx, z_idx, y_idx, x_idx]
+        Returns:
+            batch_dict:
+                encoded_spconv_tensor: sparse tensor
+        """
+        voxel_features, voxel_coords = batch_dict['voxel_features'], batch_dict['voxel_coords']
+        batch_size = batch_dict['batch_size']
+
+        """
+        :: WITHOUT ENTROPY FOR TIME CALCS
+        """
+        start_time_wo_ent = time.time()
+        input_sp_tensor_wo_ent = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+        x_wo_ent = self.conv_input(input_sp_tensor_wo_ent)
+
+        x_conv1_wo_ent = self.conv1(x_wo_ent)
+        x_conv2_wo_ent = self.conv2(x_conv1_wo_ent)
+        x_conv3_wo_ent = self.conv3(x_conv2_wo_ent)
+        x_conv4_wo_ent = self.conv4(x_conv3_wo_ent)
+        out_wo_ent = self.conv_out(x_conv4_wo_ent)
+
+        # Observation Memory Consumption:
+        mem_time = time.time()
+        memory_con_wo_ent = (
+                                    input_sp_tensor_wo_ent.features.element_size() * input_sp_tensor_wo_ent.features.nelement() +
+                                    input_sp_tensor_wo_ent.indices.element_size() * input_sp_tensor_wo_ent.indices.nelement() +
+                                    x_wo_ent.features.element_size() * x_wo_ent.features.nelement() +
+                                    x_wo_ent.indices.element_size() * x_wo_ent.indices.nelement() +
+                                    x_conv1_wo_ent.features.element_size() * x_conv1_wo_ent.features.nelement() +
+                                    x_conv1_wo_ent.indices.element_size() * x_conv1_wo_ent.indices.nelement() +
+                                    x_conv2_wo_ent.features.element_size() * x_conv2_wo_ent.features.nelement() +
+                                    x_conv2_wo_ent.indices.element_size() * x_conv2_wo_ent.indices.nelement() +
+                                    x_conv3_wo_ent.features.element_size() * x_conv3_wo_ent.features.nelement() +
+                                    x_conv3_wo_ent.indices.element_size() * x_conv3_wo_ent.indices.nelement() +
+                                    x_conv4_wo_ent.features.element_size() * x_conv4_wo_ent.features.nelement() +
+                                    x_conv4_wo_ent.indices.element_size() * x_conv4_wo_ent.indices.nelement()) * 1e-6
+        end_mem_time = time.time() - mem_time
+
+        end_time_wo_ent = time.time() - start_time_wo_ent - end_mem_time
+
+        """
+        :: WITH ENTROPY FOR TIME CALCS
+        """
+        start_time_entropy = time.time()
+        input_sp_tensor = spconv.SparseConvTensor(
+            features=voxel_features,
+            indices=voxel_coords.int(),
+            spatial_shape=self.sparse_shape,
+            batch_size=batch_size
+        )
+        x = self.conv_input(input_sp_tensor)
+        x_conv1 = self.conv1(x)
+        x_conv2 = self.conv2(x_conv1)
+        x_conv3 = self.conv3(x_conv2)
+        x_conv4 = self.conv4(x_conv3)
+
+        topn_indices = torch.topk(entropyOfFmapsSparse(x_conv4.features),
+                                  int(x_conv4.features.shape[0] * self.top_percentage)).indices
+
+        x_topn = spconv.SparseConvTensor(
+            features=x_conv4.features[topn_indices],
+            indices=x_conv4.indices[topn_indices],
+            spatial_shape=x_conv4.spatial_shape,
+            batch_size=x_conv4.batch_size
+        )
+        out = self.conv_out(x_topn)
+
+        # Observation Memory Consumption:
+        mem_time = time.time()
+        memory_con = (
+                             input_sp_tensor.features.element_size() * input_sp_tensor.features.nelement() +
+                             input_sp_tensor.indices.element_size() * input_sp_tensor.indices.nelement() +
+                             x.features.element_size() * x.features.nelement() +
+                             x.indices.element_size() * x.indices.nelement() +
+                             x_conv1.features.element_size() * x_conv1.features.nelement() +
+                             x_conv1.indices.element_size() * x_conv1.indices.nelement() +
+                             x_conv2.features.element_size() * x_conv2.features.nelement() +
+                             x_conv2.indices.element_size() * x_conv2.indices.nelement() +
+                             x_conv3.features.element_size() * x_conv3.features.nelement() +
+                             x_conv3.indices.element_size() * x_conv3.indices.nelement() +
+                             x_conv4.features.element_size() * x_conv4.features.nelement() +
+                             x_conv4.indices.element_size() * x_conv4.indices.nelement()) * 1e-6
+
+        batch_dict.update({
+            'multi_scale_3d_features': {
+                'input_': input_sp_tensor,
+                'x_input': x,
+                'x_conv1': x_conv1,
+                'x_conv2': x_conv2,
+                'x_conv3': x_conv3,
+                'x_conv4': x_conv4,
+            }})
+        end_mem_time = time.time() - mem_time
+
+        end_time_entropy = time.time() - start_time_entropy - end_mem_time
+
+        # if student, insert feature adaptation layer
+        if getattr(self, 'feat_adapt_single', None):
+            self.feat_adapt_single(self.conv_out[0](x_conv4_wo_ent))
+        if getattr(self, 'feat_adapt_autoencoder', None):
+            self.feat_adapt_autoencoder(self.conv_out[0](x_conv4_wo_ent))
+        if getattr(self, 'full_autoencoder', None):
+            self.full_autoencoder(self.conv_out[0](x_conv4_wo_ent))
+
+        # TODO: commented because clone_sp_tensor need modification of spconv_utils.py
+        # if getattr(self, 'is_teacher', None):
+        #     pre_act_encoded_spconv_tensor = clone_sp_tensor(out, batch_size)
+        # out = replace_feature(out, self.final_act(out.features))
+
+        batch_dict.update({
+            'encoded_spconv_tensor': out,
+            'encoded_spconv_tensor_stride': 8,
+        })
+
+        # comment to save memory
+        # batch_dict.update({
+        #     'multi_scale_3d_features': {
+        #         'x_conv1': x_conv1,
+        #         'x_conv2': x_conv2,
+        #         'x_conv3': x_conv3,
+        #         'x_conv4': x_conv4,
+        #     }
+        # })
+
+        # Time & Memory Observation:
+        batch_dict.update({
+            'time_wo_ent': end_time_wo_ent,
+            'time_entropy': end_time_entropy,
+            'memory_con_wo_ent': memory_con_wo_ent,
+            'memory_con': memory_con,
+        })
+
         # TODO: Teacher stuff not used yet
         # if getattr(self, 'is_teacher', None):
         #     batch_dict.update({

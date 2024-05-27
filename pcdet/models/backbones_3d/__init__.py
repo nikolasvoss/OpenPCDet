@@ -1,5 +1,9 @@
 from .pointnet2_backbone import PointNet2Backbone, PointNet2MSG
 from .spconv_backbone import VoxelBackBone8x, VoxelResBackBone8x
+# TODO niko: no todo, added imports
+from .spconv_backbone import (VoxelResBackBone8xEntropy1, VoxelResBackBone8xEntropy2,
+                              VoxelResBackBone8xEntropy3, VoxelResBackBone8xEntropy4,
+                              VoxelResBackBone8xImpNotImpGen)
 from .spconv_backbone_2d import PillarBackBone8x, PillarRes18BackBone8x
 from .spconv_backbone_focal import VoxelBackBone8xFocal
 from .spconv_backbone_voxelnext import VoxelResBackBone8xVoxelNeXt
@@ -19,4 +23,10 @@ __all__ = {
     'PillarBackBone8x': PillarBackBone8x,
     'PillarRes18BackBone8x': PillarRes18BackBone8x,
     'DSVT': DSVT,
+    # TODO: niko: no todo, added entries
+    'VoxelResBackBone8xEntropy1': VoxelResBackBone8xEntropy1,
+    'VoxelResBackBone8xEntropy2': VoxelResBackBone8xEntropy2,
+    'VoxelResBackBone8xEntropy3': VoxelResBackBone8xEntropy3,
+    'VoxelResBackBone8xEntropy4': VoxelResBackBone8xEntropy4,
+    'VoxelResBackBone8xImpNotImpGen': VoxelResBackBone8xImpNotImpGen,
 }
