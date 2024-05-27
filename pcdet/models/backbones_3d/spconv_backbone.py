@@ -1474,7 +1474,7 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
                 shape_iter += imp_features.shape[0]
 
                 if imp_features.shape[0] >= 1:
-                    dir = os.path.join(os.path.expanduser('~'), 'fm_observation_Second/layer_0/imp/')
+                    dir = os.path.expanduser('~/fm_observation_Second/layer_0/imp/')
                     fn = f"{batch_dict['metadata'][0]['token'] + '_{}'.format(i)}"
                     os.makedirs(dir, exist_ok=True)
                     torch.save(imp_features, os.path.join(dir, fn))
@@ -1484,7 +1484,7 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
             bool_mask[mask_imp] = False
             fea_no_imp = voxel_features[bool_mask]
 
-            dir = os.path.join(os.path.expanduser('~'), '/fm_observation_Second/layer_0/noimp/')
+            dir = os.path.expanduser('~/fm_observation_Second/layer_0/noimp/')
             fn = f"{batch_dict['metadata'][0]['token']}"
             os.makedirs(dir, exist_ok=True)
             torch.save(fea_no_imp, os.path.join(dir, fn))
@@ -1545,7 +1545,7 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
                 shape_iter += imp_features.shape[0]
 
                 if imp_features.shape[0] >= 1:
-                    dir = os.path.join(os.path.expanduser('~'), 'fm_observation_Second/layer_1/imp/')
+                    dir = os.path.expanduser('~/fm_observation_Second/layer_1/imp/')
                     fn = f"{batch_dict['metadata'][0]['token'] + '_{}'.format(i)}"
                     os.makedirs(dir, exist_ok=True)
                     torch.save(imp_features, os.path.join(dir, fn))
@@ -1554,7 +1554,7 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
             mask_imp = torch.cat(voxel_mask_list)
             bool_mask[mask_imp] = False
             fea_no_imp = voxel_features_conv1[bool_mask]
-            dir = os.path.join(os.path.expanduser('~'), '/fm_observation_Second/layer_1/noimp/')
+            dir = os.path.expanduser('~/fm_observation_Second/layer_1/noimp/')
             fn = f"{batch_dict['metadata'][0]['token']}"
             os.makedirs(dir, exist_ok=True)
             torch.save(fea_no_imp, os.path.join(dir, fn))
@@ -1597,7 +1597,7 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
                 shape_iter += imp_features.shape[0]
 
                 if imp_features.shape[0] >= 1:
-                    dir = os.path.join(os.path.expanduser('~'), '/fm_observation_Second/layer_2/imp/')
+                    dir = os.path.expanduser('~/fm_observation_Second/layer_2/imp/')
                     fn = f"{batch_dict['metadata'][0]['token'] + '_{}'.format(i)}"
                     os.makedirs(dir, exist_ok=True)
                     torch.save(imp_features, os.path.join(dir, fn))
@@ -1606,7 +1606,7 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
             mask_imp = torch.cat(voxel_mask_list)
             bool_mask[mask_imp] = False
             fea_no_imp = voxel_features_conv2[bool_mask]
-            dir = os.path.join(os.path.expanduser('~'), '/fm_observation_Second/layer_2/noimp/')
+            dir = os.path.expanduser('~/fm_observation_Second/layer_2/noimp/')
             fn = f"{batch_dict['metadata'][0]['token']}"
             os.makedirs(dir, exist_ok=True)
             torch.save(fea_no_imp, os.path.join(dir, fn))
@@ -1649,7 +1649,7 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
                 shape_iter += imp_features.shape[0]
 
                 if imp_features.shape[0] >= 1:
-                    dir = os.path.join(os.path.expanduser('~'), '/fm_observation_Second/layer_3/imp/')
+                    dir = os.path.expanduser('~/fm_observation_Second/layer_3/imp/')
                     fn = f"{batch_dict['metadata'][0]['token'] + '_{}'.format(i)}"
                     os.makedirs(dir, exist_ok=True)
                     torch.save(imp_features, os.path.join(dir, fn))
@@ -1658,7 +1658,7 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
             mask_imp = torch.cat(voxel_mask_list)
             bool_mask[mask_imp] = False
             fea_no_imp = voxel_features_conv3[bool_mask]
-            dir = os.path.join(os.path.expanduser('~'), '/fm_observation_Second/layer_3/noimp/')
+            dir = os.path.expanduser('~/fm_observation_Second/layer_3/noimp/')
             fn = f"{batch_dict['metadata'][0]['token']}"
             os.makedirs(dir, exist_ok=True)
             torch.save(fea_no_imp, os.path.join(dir, fn))
@@ -1700,7 +1700,7 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
                 imp_features = voxel_features_conv4[voxel_mask]
                 shape_iter += imp_features.shape[0]
 
-                dir = os.path.join(os.path.expanduser('~'), '/fm_observation_Second/layer_4/imp/')
+                dir = os.path.expanduser('~/fm_observation_Second/layer_4/imp/')
                 fn = f"{batch_dict['metadata'][0]['token'] + '_{}'.format(i)}"
                 os.makedirs(dir, exist_ok=True)
                 torch.save(imp_features, os.path.join(dir, fn))
@@ -1709,7 +1709,7 @@ class VoxelResBackBone8xImpNotImpGen(nn.Module):
             mask_imp = torch.cat(voxel_mask_list)
             bool_mask[mask_imp] = False
             fea_no_imp = voxel_features_conv4[bool_mask]
-            dir = os.path.join(os.path.expanduser('~'), '/fm_observation_Second/layer_4/noimp/')
+            dir = os.path.expanduser('~/fm_observation_Second/layer_4/noimp/')
             fn = f"{batch_dict['metadata'][0]['token']}"
             os.makedirs(dir, exist_ok=True)
             torch.save(fea_no_imp, os.path.join(dir, fn))
