@@ -77,6 +77,16 @@ class DataProcessor(object):
             self.data_processor_queue.append(cur_processor)
 
     def mask_points_and_boxes_outside_range(self, data_dict=None, config=None):
+        """
+        Filters out points and bounding boxes outside the specified point_cloud_range.
+
+        Args:
+            data_dict (dict): Contains data to be processed. Default is None.
+            config (object): Provides settings for processing. Default is None.
+
+        Returns:
+            dict: Updated `data_dict` after applying the masks.
+        """
         if data_dict is None:
             return partial(self.mask_points_and_boxes_outside_range, config=config)
 
@@ -86,13 +96,23 @@ class DataProcessor(object):
 
         if data_dict.get('gt_boxes', None) is not None and config.REMOVE_OUTSIDE_BOXES and self.training:
             mask = box_utils.mask_boxes_outside_range_numpy(
-                data_dict['gt_boxes'], self.point_cloud_range, min_num_corners=config.get('min_num_corners', 1), 
+                data_dict['gt_boxes'], self.point_cloud_range, min_num_corners=config.get('min_num_corners', 1),
                 use_center_to_filter=config.get('USE_CENTER_TO_FILTER', True)
             )
             data_dict['gt_boxes'] = data_dict['gt_boxes'][mask]
         return data_dict
 
     def shuffle_points(self, data_dict=None, config=None):
+        """
+        Shuffles the points inside `data_dict` if shuffling is enabled in the configuration (..._dataset.yaml).
+
+        Args:
+            data_dict (dict): Contains data to be processed. Default is None.
+            config (object): Provides settings for processing. Default is None.
+
+        Returns:
+            dict: Updated `data_dict` with shuffled points if shuffling is enabled.
+        """
         if data_dict is None:
             return partial(self.shuffle_points, config=config)
 
@@ -131,6 +151,23 @@ class DataProcessor(object):
         return points_yflip, points_xflip, points_xyflip
 
     def transform_points_to_voxels(self, data_dict=None, config=None):
+        """
+        Transforms points to voxels based on the dataset configuration (..._dataset.yaml).
+
+        If `data_dict` is None, it calculates the grid size and binds the configuration to a partial function.
+        This is done to avoid pickling issues in multiprocess spawn.
+
+        If `data_dict` is not None, it generates voxels from the points in `data_dict` using the VoxelGeneratorWrapper.
+        If the 'use_lead_xyz' key in `data_dict` is False, it removes the leading xyz coordinates in the voxels.
+        If the 'DOUBLE_FLIP' key in the configuration is True, it generates additional sets of voxels by flipping the points.
+
+        Args:
+            data_dict (dict): Contains input data. Default is None.
+            config (object): Contains settings from .yaml file. Default is None.
+
+        Returns:
+            dict: Updated `data_dict` with generated voxels, their coordinates, and the number of points per voxel.
+        """
         if data_dict is None:
             grid_size = (self.point_cloud_range[3:6] - self.point_cloud_range[0:3]) / np.array(config.VOXEL_SIZE)
             self.grid_size = np.round(grid_size).astype(np.int64)
