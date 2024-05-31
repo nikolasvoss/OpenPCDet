@@ -27,6 +27,23 @@ class BaseBEVBackbone(nn.Module):
             num_filters = (np.array(num_filters, dtype=np.int32) * model_cfg.WIDTH).astype(int)
             num_upsample_filters = (np.array(num_upsample_filters, dtype=np.int32) * model_cfg.WIDTH).astype(int)
 
+        if model_cfg.get('FEAT_ADAPT_SINGLE', False):
+            self.use_feat_adapt_single = model_cfg.FEAT_ADAPT_SINGLE
+            # throw error if KD_LAYER_NAME is not provided
+            if self.use_feat_adapt_single is True and model_cfg.get('KD_LAYER_NAME', None) is None:
+                raise ValueError('KD_LAYER_NAME must be provided if FEAT_ADAPT_SINGLE is True')
+            else:
+                self.kd_layer_name = model_cfg.KD_LAYER_NAME
+                # extract the layer numbers from the string, example: 'backbone_2d.blocks.0.16'
+                self.kd_layer_num = [0, 0]
+                self.kd_layer_num[0] = int(self.kd_layer_name.split('.')[-2])
+                self.kd_layer_num[1] = int(self.kd_layer_name.split('.')[-1])
+
+        else:
+            self.use_feat_adapt_single = False
+            self.kd_layer_name = None
+            self.kd_layer_num = [0, 0]
+
         num_levels = len(layer_nums)
         c_in_list = [input_channels, *num_filters[:-1]]
         self.blocks = nn.ModuleList()
@@ -82,6 +99,19 @@ class BaseBEVBackbone(nn.Module):
 
         self.num_bev_features = c_in
 
+        if self.use_feat_adapt_single is True:
+            # the feature adaptation layer is used to adapt the feature dimension of the student to the teacher
+            self.feat_adapt_single = nn.Sequential(
+                # channels for backbone_2d.0.16: student: 64, teacher: 128
+                nn.Conv2d(64, 128, kernel_size=1, stride=1, padding=0, bias=True),
+                # nn.BatchNorm2d(c_in, eps=1e-3, momentum=0.01),
+                # nn.ReLU()
+            )
+            self.feat_adapt_single[0].bias.requires_grad = True
+            self.feat_adapt_single[0].weight.requires_grad = True
+            nn.init.zeros_(self.feat_adapt_single[0].bias.data)
+            nn.init.kaiming_normal_(self.feat_adapt_single[0].weight.data)
+
     def forward(self, data_dict):
         """
         Args:
@@ -93,8 +123,11 @@ class BaseBEVBackbone(nn.Module):
         ups = []
         ret_dict = {}
         x = spatial_features
+        x_adapt = [None, None]
         for i in range(len(self.blocks)):
-            x = self.blocks[i](x)
+            # split forward pass to extract the feature map of the KD_LAYER_NAME
+            x_adapt[i] = self.blocks[i][:self.kd_layer_num[1]+1](x)
+            x = self.blocks[i][self.kd_layer_num[1]+1:](x_adapt[i])
 
             stride = int(spatial_features.shape[2] / x.shape[2])
             ret_dict['spatial_features_%dx' % stride] = x
@@ -112,6 +145,9 @@ class BaseBEVBackbone(nn.Module):
             x = self.deblocks[-1](x)
 
         data_dict['spatial_features_2d'] = x
+
+        if getattr(self, 'feat_adapt_single', None):
+            self.feat_adapt_single(x_adapt[self.kd_layer_num[0]])
 
         return data_dict
 

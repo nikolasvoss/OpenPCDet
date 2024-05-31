@@ -673,8 +673,9 @@ def fmapKdLoss(fmap_student, fmap_teacher):
     """Calculates the KL divergence between the feature maps of the student and teacher networks.
     Firstly the different number of channels must be handled
     """
-    fmap_student = fmap_student.dense()
-    fmap_teacher = fmap_teacher.dense()
+    if hasattr(fmap_student, 'dense'):
+        fmap_student = fmap_student.dense()
+        fmap_teacher = fmap_teacher.dense()
 
     # loss = torch.sum((fmap_student-fmap_teacher)**2, dim=1)     # sum over all channels
     loss = nn.MSELoss()
@@ -690,9 +691,12 @@ def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, mult
     5. calculate the loss
 
     """
+    if hasattr(fmap_student, 'dense'):
+        fmap_student = fmap_student.dense()
+        fmap_teacher = fmap_teacher.dense()
     # sum over z axis
-    fmap_student = fmap_student.dense().sum(axis=-3, keepdims=False)
-    fmap_teacher = fmap_teacher.dense().sum(axis=-3, keepdims=False)
+    fmap_student = fmap_student.sum(axis=-3, keepdims=False)
+    fmap_teacher = fmap_teacher.sum(axis=-3, keepdims=False)
     # check if the shape of the last two dimensions of fmap_student and fmap_teacher are the same
     if fmap_student.shape[-2:] != fmap_teacher.shape[-2:]:
         raise ValueError('Feature maps of student and teacher do not have the same shape in the last two dimensions.')
