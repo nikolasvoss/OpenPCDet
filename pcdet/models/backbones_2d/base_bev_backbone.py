@@ -103,7 +103,10 @@ class BaseBEVBackbone(nn.Module):
             # the feature adaptation layer is used to adapt the feature dimension of the student to the teacher
             self.feat_adapt_single = nn.Sequential(
                 # channels for backbone_2d.0.16: student: 64, teacher: 128
-                nn.Conv2d(64, 128, kernel_size=1, stride=1, padding=0, bias=True),
+                # this assumes, that the width of the teacher is unchanged
+                nn.Conv2d(self.blocks[self.kd_layer_num[0]][self.kd_layer_num[1]].in_channels,
+                          int(self.blocks[self.kd_layer_num[0]][self.kd_layer_num[1]].in_channels / self.model_cfg.WIDTH),
+                          kernel_size=1, stride=1, padding=0, bias=True),
                 # nn.BatchNorm2d(c_in, eps=1e-3, momentum=0.01),
                 # nn.ReLU()
             )
