@@ -25,6 +25,8 @@ MODEL:
     BACKBONE_2D:
         NAME: BaseBEVBackbone
         WIDTH: 0.5
+        FEAT_ADAPT_SINGLE: True
+        KD_LAYER_NAME: backbone_2d.blocks.0.16
 
         LAYER_NUMS: [5, 5]
         LAYER_STRIDES: [1, 2]
