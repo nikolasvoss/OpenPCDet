@@ -15,6 +15,7 @@ MODEL:
         NAME: VoxelResBackBone8x
         WIDTH: 0.75
         FEAT_ADAPT_SINGLE: True
+        KD_LAYER_NAME: backbone_3d.conv3.1.conv2 # used to calc channel width
         FEAT_ADAPT_AUTOENCODER: False
         TOP_PERCENTAGE: 0.5
 

@@ -9,6 +9,7 @@ import os
 
 from ...utils.spconv_utils import replace_feature, spconv
 from tools.visual_utils.vis_feature_maps import entropyOfFmapsSparse
+from functools import reduce
 
 
 def post_act_block(in_channels, out_channels, kernel_size, indice_key=None, stride=1, padding=0,
@@ -363,6 +364,14 @@ class VoxelResBackBone8x(nn.Module):
 
         if model_cfg.get('TOP_PERCENTAGE', False):
             self.top_percentage = model_cfg.TOP_PERCENTAGE
+            
+        if model_cfg.get('KD_LAYER_NAME', None):
+                self.kd_layer_names = model_cfg.KD_LAYER_NAME
+                # extract the layer names from the string, example: 'backbone_3d.conv3.1.conv2'
+                self.kd_layer_names = self.kd_layer_names.split('.')
+        else:
+            if use_feat_adapt_single is True:
+                raise ValueError('KD_LAYER_NAME must be provided if FEAT_ADAPT_SINGLE is True')
 
         self.conv_input = spconv.SparseSequential(
             spconv.SubMConv3d(input_channels, num_filters[0], 3, padding=1, bias=False, indice_key='subm1'),
@@ -418,8 +427,13 @@ class VoxelResBackBone8x(nn.Module):
 
         if use_feat_adapt_single is True:
             # the feature adaptation layer is used to adapt the feature dimension of the student to the teacher
+            # this assumes, that the width of the teacher is unchanged
             self.feat_adapt_single = spconv.SparseSequential(
-                spconv.SparseConv3d(num_filters[5], 128, 1, stride=1, padding=0),
+                    spconv.SparseConv3d(
+                    reduce(getattr, self.kd_layer_names[1:], self).in_channels, # reduce calls getattr recursively with the previous result
+                    int(reduce(getattr, self.kd_layer_names[1:], self).in_channels / self.model_cfg.WIDTH),
+                    1, stride=1, padding=0),
+                # norm_fn(128),
                 nn.ReLU())
             self.feat_adapt_single[0].bias.requires_grad = True
             self.feat_adapt_single[0].weight.requires_grad = True
