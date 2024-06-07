@@ -21,6 +21,7 @@ class AnchorGenerator(object):
         for grid_size, anchor_size, anchor_rotation, anchor_height, align_center in zip(
                 grid_sizes, self.anchor_sizes, self.anchor_rotations, self.anchor_heights, self.align_center):
 
+            # Anchor_size: length, width, height of box, anchor_height: bottom height of box
             num_anchors_per_location.append(len(anchor_rotation) * len(anchor_size) * len(anchor_height))
             if align_center:
                 x_stride = (self.anchor_range[3] - self.anchor_range[0]) / grid_size[0]

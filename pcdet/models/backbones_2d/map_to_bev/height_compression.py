@@ -9,6 +9,7 @@ class HeightCompression(nn.Module):
 
     def forward(self, batch_dict):
         """
+        Creates a 2D feature map from the sparse 3D tensor by stacking the z-dimension.
         Args:
             batch_dict:
                 encoded_spconv_tensor: sparse tensor

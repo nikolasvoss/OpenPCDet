@@ -185,6 +185,8 @@ class AnchorHeadMulti(AnchorHeadTemplate):
                 self.class_names.index(cur_name) + 1 for cur_name in rpn_head_cfg['HEAD_CLS_NAME']
             ]))
 
+            # why is the output channel size =8 when there are two classes? There are 2 anchors per class -> 4,
+            # but in SingleHead.__init() it is multiplied with num_class -> 8
             rpn_head = SingleHead(
                 self.model_cfg, input_channels,
                 len(rpn_head_cfg['HEAD_CLS_NAME']) if self.separate_multihead else self.num_class,
@@ -196,16 +198,32 @@ class AnchorHeadMulti(AnchorHeadTemplate):
         self.rpn_heads = nn.ModuleList(rpn_heads)
 
     def forward(self, data_dict):
+        """
+            Args:
+                data_dict (dict): A dictionary containing the input data. It should have the key 'spatial_features_2d'
+                                  which corresponds to the 2D spatial features of the input.
+
+            Returns:
+                data_dict (dict): The input dictionary is updated with the predictions and returned. The dictionary
+                                  includes the following keys:
+                                  - 'batch_cls_preds': Class predictions for each bounding box.
+                                  - 'batch_box_preds': Bounding box predictions.
+                                  - 'cls_preds_normalized': A flag indicating whether the class predictions are normalized.
+                                  - 'multihead_label_mapping': (Optional) A list of label indices for each head in a multi-head setup.
+            """
         spatial_features_2d = data_dict['spatial_features_2d']
         if self.shared_conv is not None:
             spatial_features_2d = self.shared_conv(spatial_features_2d)
 
+        # Apply each region proposal network (RPN) head to the spatial features
         ret_dicts = []
         for rpn_head in self.rpn_heads:
             ret_dicts.append(rpn_head(spatial_features_2d))
 
         cls_preds = [ret_dict['cls_preds'] for ret_dict in ret_dicts]
         box_preds = [ret_dict['box_preds'] for ret_dict in ret_dicts]
+
+        # If the model is configured to use separate heads, keep the predictions separate, otherwise concatenate them
         ret = {
             'cls_preds': cls_preds if self.separate_multihead else torch.cat(cls_preds, dim=1),
             'box_preds': box_preds if self.separate_multihead else torch.cat(box_preds, dim=1),
@@ -224,11 +242,13 @@ class AnchorHeadMulti(AnchorHeadTemplate):
             self.forward_ret_dict.update(targets_dict)
 
         if not self.training or self.predict_boxes_when_training:
+            # create full boxes from rpn head (offset, height, etc) predictions
             batch_cls_preds, batch_box_preds = self.generate_predicted_boxes(
                 batch_size=data_dict['batch_size'],
                 cls_preds=ret['cls_preds'], box_preds=ret['box_preds'], dir_cls_preds=ret.get('dir_cls_preds', None)
             )
 
+            # If the class predictions are a list, generate a label mapping for each head in a multi-head setup
             if isinstance(batch_cls_preds, list):
                 multihead_label_mapping = []
                 for idx in range(len(batch_cls_preds)):

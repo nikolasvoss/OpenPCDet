@@ -224,17 +224,20 @@ class AnchorHeadTemplate(nn.Module):
 
     def generate_predicted_boxes(self, batch_size, cls_preds, box_preds, dir_cls_preds=None):
         """
+        This function generates predicted bounding boxes from rpn head predictions for offset, height, ...
+        cls_preds is only reshaped.
+
         Args:
             batch_size:
-            cls_preds: (N, H, W, C1)
-            box_preds: (N, H, W, C2)
-            dir_cls_preds: (N, H, W, C3)
+            cls_preds: (N, H, W, C1) The class predictions for each bounding box.
+            box_preds: (N, H, W, C2) The bounding box predictions.
+            dir_cls_preds: (N, H, W, C3) (optional) The direction class predictions for each bounding box.
 
         Returns:
-            batch_cls_preds: (B, num_boxes, num_classes)
-            batch_box_preds: (B, num_boxes, 7+C)
-
+            batch_cls_preds: (B, num_boxes, num_classes) The batched class predictions.
+            batch_box_preds: (B, num_boxes, 7+C) The batched bounding box predictions.
         """
+        # Check if anchors are a list and concatenate them accordingly
         if isinstance(self.anchors, list):
             if self.use_multihead:
                 anchors = torch.cat([anchor.permute(3, 4, 0, 1, 2, 5).contiguous().view(-1, anchor.shape[-1])
@@ -243,14 +246,19 @@ class AnchorHeadTemplate(nn.Module):
                 anchors = torch.cat(self.anchors, dim=-3)
         else:
             anchors = self.anchors
+
+        # Calculate the number of anchors and repeat them for each sample in the batch
         num_anchors = anchors.view(-1, anchors.shape[-1]).shape[0]
         batch_anchors = anchors.view(1, -1, anchors.shape[-1]).repeat(batch_size, 1, 1)
+
+        # Reshape class and box predictions and decode the box predictions
         batch_cls_preds = cls_preds.view(batch_size, num_anchors, -1).float() \
             if not isinstance(cls_preds, list) else cls_preds
         batch_box_preds = box_preds.view(batch_size, num_anchors, -1) if not isinstance(box_preds, list) \
             else torch.cat(box_preds, dim=1).view(batch_size, num_anchors, -1)
         batch_box_preds = self.box_coder.decode_torch(batch_box_preds, batch_anchors)
 
+        # If direction class predictions are provided, adjust the rotation of the bounding boxes
         if dir_cls_preds is not None:
             dir_offset = self.model_cfg.DIR_OFFSET
             dir_limit_offset = self.model_cfg.DIR_LIMIT_OFFSET
@@ -264,6 +272,7 @@ class AnchorHeadTemplate(nn.Module):
             )
             batch_box_preds[..., 6] = dir_rot + dir_offset + period * dir_labels.to(batch_box_preds.dtype)
 
+        # If the box coder is a PreviousResidualDecoder, adjust the rotation of the bounding boxes
         if isinstance(self.box_coder, box_coder_utils.PreviousResidualDecoder):
             batch_box_preds[..., 6] = common_utils.limit_period(
                 -(batch_box_preds[..., 6] + np.pi / 2), offset=0.5, period=np.pi * 2
