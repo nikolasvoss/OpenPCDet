@@ -494,6 +494,9 @@ class VoxelResBackBone8x(nn.Module):
         x = self.conv_input(input_sp_tensor)
         x_conv1 = self.conv1(x)
         x_conv2 = self.conv2(x_conv1)
+        # save the result of self.conv3[1].conv1 in x_conv_adapt
+        if getattr(self, 'feat_adapt_single', None):
+            x_conv_adapt = self.conv3[1].conv1(self.conv3[0](x_conv2))
         x_conv3 = self.conv3(x_conv2)
         x_conv4 = self.conv4(x_conv3)
 
@@ -517,7 +520,7 @@ class VoxelResBackBone8x(nn.Module):
 
         # if student, insert feature adaptation layer
         if getattr(self, 'feat_adapt_single', None):
-            self.feat_adapt_single(self.conv_out[0](x_conv4))
+            self.feat_adapt_single(x_conv_adapt)
         if getattr(self, 'feat_adapt_autoencoder', None):
             self.feat_adapt_autoencoder(self.conv_out[0](x_conv4))
         if getattr(self, 'full_autoencoder', None):
