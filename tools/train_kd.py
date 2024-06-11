@@ -455,35 +455,38 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
 
         if args.kd_loss_func == 'entropy':
             if len(visfm.feature_maps) == 2:
-                kd_loss = fmapEntropyLoss(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
+                kd_loss = loss_fmap_entr(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
                                       args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
             elif len(visfm.feature_maps) == 4:
-                kd_loss = fmapEntropyLoss(visfm.feature_maps[2], visfm.feature_maps[0], args.num_bins, args.x_shift,
+                kd_loss = loss_fmap_entr(visfm.feature_maps[2], visfm.feature_maps[0], args.num_bins, args.x_shift,
                                       args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
-                kd_loss += fmapEntropyLoss(visfm.feature_maps[3], visfm.feature_maps[1], args.num_bins, args.x_shift,
+                kd_loss += loss_fmap_entr(visfm.feature_maps[3], visfm.feature_maps[1], args.num_bins, args.x_shift,
                                       args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
             elif len(visfm.feature_maps) == 6:
-                kd_loss = fmapEntropyLoss(visfm.feature_maps[3], visfm.feature_maps[0], args.num_bins, args.x_shift,
+                kd_loss = loss_fmap_entr(visfm.feature_maps[3], visfm.feature_maps[0], args.num_bins, args.x_shift,
                                       args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
-                kd_loss += fmapEntropyLoss(visfm.feature_maps[4], visfm.feature_maps[1], args.num_bins, args.x_shift,
+                kd_loss += loss_fmap_entr(visfm.feature_maps[4], visfm.feature_maps[1], args.num_bins, args.x_shift,
                                       args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
-                kd_loss += fmapEntropyLoss(visfm.feature_maps[5], visfm.feature_maps[2], args.num_bins, args.x_shift,
+                kd_loss += loss_fmap_entr(visfm.feature_maps[5], visfm.feature_maps[2], args.num_bins, args.x_shift,
                                       args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
             else:
                 raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
         elif args.kd_loss_func == 'entropyRelN':
-            kd_loss = fmapEntropyLossRelativeN(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
+            kd_loss = loss_fmap_entr_reln_sparse(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
                                         args.multiplier, args.lower_bound, args.activation, top_n_relative=args.top_n_relative)
+        elif args.kd_loss_func == 'entropyRelNDense':
+            kd_loss = loss_fmap_entr_reln_dense(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
+                                             args.multiplier, args.lower_bound, args.activation, top_n_relative=args.top_n_relative)
         elif args.kd_loss_func == 'basic':
             if len(visfm.feature_maps) == 2:
-                kd_loss = fmapKdLoss(visfm.feature_maps[1], visfm.feature_maps[0])
+                kd_loss = loss_fmap_kd(visfm.feature_maps[1], visfm.feature_maps[0])
             elif len(visfm.feature_maps) == 4:
-                kd_loss = fmapKdLoss(visfm.feature_maps[2], visfm.feature_maps[0])
-                kd_loss += fmapKdLoss(visfm.feature_maps[3], visfm.feature_maps[1])
+                kd_loss = loss_fmap_kd(visfm.feature_maps[2], visfm.feature_maps[0])
+                kd_loss += loss_fmap_kd(visfm.feature_maps[3], visfm.feature_maps[1])
             elif len(visfm.feature_maps) == 6:
-                kd_loss = fmapKdLoss(visfm.feature_maps[3], visfm.feature_maps[0])
-                kd_loss += fmapKdLoss(visfm.feature_maps[4], visfm.feature_maps[1])
-                kd_loss += fmapKdLoss(visfm.feature_maps[5], visfm.feature_maps[2])
+                kd_loss = loss_fmap_kd(visfm.feature_maps[3], visfm.feature_maps[0])
+                kd_loss += loss_fmap_kd(visfm.feature_maps[4], visfm.feature_maps[1])
+                kd_loss += loss_fmap_kd(visfm.feature_maps[5], visfm.feature_maps[2])
             else:
                 raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
         else:
@@ -669,7 +672,7 @@ def createHooks(model, model_teacher, args, logger):
         logger.info('Created teacher hook for layer: %s' % args.layer2_name_teacher)
 
 
-def fmapKdLoss(fmap_student, fmap_teacher):
+def loss_fmap_kd(fmap_student, fmap_teacher):
     """Calculates the KL divergence between the feature maps of the student and teacher networks.
     Firstly the different number of channels must be handled
     """
@@ -682,7 +685,7 @@ def fmapKdLoss(fmap_student, fmap_teacher):
     return loss(fmap_student, fmap_teacher)
 
 
-def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05, act_fn='sigmoid', top_n=5000):
+def loss_fmap_entr(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05, act_fn='sigmoid', top_n=5000):
     """Calculates the entropy of the feature maps of the student network
     1. Sum over the z-axis -> fmap_student.shape [batch, channel, y, x]: [8, 96, 128, 128], fmap_teacher.shape: [8, 128, 128, 128]
     2. Calculate the entropy of the teacher -> entr_teacher.shape: [8, 128, 128]
@@ -727,6 +730,8 @@ def fmapEntropyLoss(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, mult
 
 
 def fmapEntropyLossRelativeN(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05, act_fn='sigmoid', top_n_relative=0.75):
+
+def loss_fmap_entr_reln_sparse(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5):
     """Calculates the entropy loss of the with a relative topN value in sparse format
     1. Counts values per batch and calculates the relative topN value
     2. Calculate entropy of the teacher in sparse format
@@ -738,10 +743,6 @@ def fmapEntropyLossRelativeN(fmap_student, fmap_teacher, num_bins=None, x_shift=
     - fmap_student: SparseConvTensor of the student network
     - fmap_teacher: SparseConvTensor of the teacher network
     - num_bins (None): number of bins used for the entropy calculation
-    - x_shift (0.7): x-shift for the sigmoid activation
-    - multiplier (15): multiplier for the sigmoid activation
-    - lower_bound(0.05): lower bound for the sigmoid activation
-    - act_fn ('sigmoid'): activation function used after entropy calculation
     - top_n_relative (0.75): percentage of topN values to consider for the entropy calculation (0-1)
 
     Output:
