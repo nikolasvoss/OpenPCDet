@@ -29,7 +29,7 @@ import local_paths
 def parse_config():
     parser = argparse.ArgumentParser(description='arg parser')
     parser.add_argument('--cfg_file', type=str,
-                        default=local_paths.cfg_file_train,
+                        default=local_paths.cfg_file_multi_train,
                         help='specify the config for training')
     parser.add_argument('--output_dir', type=str, help='specify an output directory if needed',
                         default=None) #local_paths.output_dir_train)
@@ -76,11 +76,11 @@ def parse_config():
                         help='lower bound for entropy loss. All values below this are set to 0')
     parser.add_argument('--activation', type=str, default=None, help='activation function used after entropy calculation')
     parser.add_argument('--top_n', type=int, default=5000, help='top n voxels to consider for entropy calculation')
-    parser.add_argument('--top_n_relative', type=float, default=0.75, help='top n voxels to consider for entropyRelativeN calculation')
+    parser.add_argument('--top_n_relative', type=float, default=0.5, help='top n voxels to consider for entropyRelativeN calculation')
 
     parser.add_argument('--pretrained_model_teacher', type=str, help='pretrained model for teacher',
-                        default=local_paths.pretrained_model_teacher)
-    parser.add_argument('--layer0_name_teacher', type=str, default="backbone_3d.conv_out.0", help='layer0 name for teacher')
+                        default=local_paths.pretrained_model_teacher_multi)
+    parser.add_argument('--layer0_name_teacher', type=str, default="backbone_2d.blocks.0.16", help='layer0 name for teacher')
     parser.add_argument('--layer1_name_teacher', type=str, default=None, help='layer1 name for teacher')
     parser.add_argument('--layer2_name_teacher', type=str, default=None, help='layer2 name for teacher')
     parser.add_argument('--layer0_name_student', type=str, default="backbone_3d.feat_adapt_single.0", help='layer0 name for student')
