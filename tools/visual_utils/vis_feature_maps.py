@@ -57,7 +57,7 @@ def printAllModelLayers(model):
         print(name)
 
 
-def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_indices=None, z_plane_indices=None, no_negative_values=False):
+def vis_fmap(feature_map, output_dir, batch_idx=0, fmap_indices=None, z_plane_indices=None, no_negative_values=False):
     """Visualizes feature maps as slices in the z-plane using matplotlib.
     The plots are saved as images in the specified output directory.
 
@@ -65,11 +65,13 @@ def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_indices=None,
     feature_map [batch_size, fmaps, z, y, x], [batch_size, fmaps, y, x]: The feature map tensor to visualize.
     output_dir (str): The directory to save the visualization images.
     batch_idx (int, [int]): The index of the batch to visualize. Default is 0. Currently only supports one batch at a time.
-    fmap_idx (int, [int]): The index of the feature map to visualize. Default is None, which means all are being visualized.
-    z_plane (int, [int]): The index of the z-plane to visualize. Default is None, which means all are being visualized.
+    fmap_indices (int, [int]): The index of the feature map to visualize. Default is None, which means all are being visualized.
+    z_plane_indices (int, [int]): The index of the z-plane to visualize. Default is None, which means all are being visualized.
+    no_negative_values (bool): If True, the feature map values are set to their absolute values. Default is False.
 
     Raises:
-    ValueError: If the feature_map is None or the output_dir does not exist.
+    ValueError: If the feature_map is None or data types are incorrect or indices are out of bound.
+    FileNotFoundError: If the output directory does not exist.
     """
     if feature_map is None:
         raise ValueError("No feature map available. Check if the hook was triggered correctly.")
@@ -133,6 +135,7 @@ def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_indices=None,
             # squeeze(0) removes the z-dimension if it is 1
             feature_slice = feature_map[batch_idx, fmap_idx, z_plane].squeeze(0).cpu().numpy()
 
+            plt.title(f'Batch {batch_idx[0]}, Feature Map {fmap_idx}, Z-Plane {z_plane}')
             plt.figure(figsize=(8, 8))  # Set the figure size to be 8x8 inches
             if no_negative_values:
                 plt.imshow(abs(feature_slice*visibility_factor), cmap='copper', vmin=0, vmax=abs(feature_slice).max())
@@ -144,7 +147,7 @@ def visualizeFeatureMap(feature_map, output_dir, batch_idx=0, fmap_indices=None,
             plt.close()
 
 
-def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=None, input_points=None, same_plot=False, gt_boxes=None, pred_boxes=None):
+def vis_fmap_3d(feature_map, output_dir, batch_idx=0, fmap_indices=None, input_points=None, same_plot=False, gt_boxes=None, pred_boxes=None):
     """Visualizes 3D feature maps using Open3D.
 
     Args:
@@ -192,8 +195,7 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
 
     for idx in batch_idx:
         if not (0 <= idx < feature_map.size(0)):
-            raise ValueError(
-                f"batch_idx {idx} is out of bounds. It must be between 0 and {feature_map.size(0) - 1}")
+            raise ValueError(f"batch_idx {idx} is out of bounds. It must be between 0 and {feature_map.size(0) - 1}")
 
     if input_points is not None:
         input_points = input_points[:, 1:4]  # Only use the xyz coordinates
@@ -241,7 +243,7 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
         vis.create_window(window_name=f'Voxel Size: {voxel_size}')
 
         vis.get_render_option().point_size = 2.5
-        vis.get_render_option().background_color = [1, 1, 1]    # [0.25, 0.25, 0.25]
+        vis.get_render_option().background_color = [0.25, 0.25, 0.25]#[0, 0, 0]
 
         # Input Points Visualization
         if input_points is not None and same_plot:
@@ -271,7 +273,7 @@ def visualizeFeatureMap3dO3d(feature_map, output_dir, batch_idx=0, fmap_indices=
         vis.destroy_window()
 
 
-def visualizeFmapEntropy(feature_map, samples_idx, output_dir=None, input_points=None, pred_boxes=None, gt_boxes=None):
+def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=None, pred_boxes=None, gt_boxes=None):
     if feature_map is None:
         raise ValueError("No feature map available. Check if the hook was triggered correctly.")
     if output_dir is not None and not os.path.exists(output_dir):
