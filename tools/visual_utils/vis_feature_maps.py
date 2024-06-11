@@ -641,6 +641,7 @@ def entropyOfFmapsTorch(feature_map, num_bins=None):
         # return shape is [y, x]
         return torch.zeros([feature_map.shape[0], feature_map.shape[2], feature_map.shape[3]], device=feature_map.device), 0
 
+    feature_map = feature_map.to(torch.float32)
     # Cut outliers and normalize. Remove zeros first
     lower_limit = torch.quantile(feature_map[feature_map != 0], 0.01)
     upper_limit = torch.quantile(feature_map[feature_map != 0], 0.99)
@@ -686,6 +687,7 @@ def entropyOfFmapsSparse(feature_map, num_bins=None):
 
     """
 
+    feature_map = feature_map.to(torch.float32) # somehow does not work with float16. Could be issue with  old torch version.
     # Cut outliers and normalize. Remove zeros first
     lower_limit = torch.quantile(feature_map[feature_map != 0], 0.01)
     upper_limit = torch.quantile(feature_map[feature_map != 0], 0.99)
