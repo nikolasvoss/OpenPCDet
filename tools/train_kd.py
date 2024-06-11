@@ -472,11 +472,11 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
             else:
                 raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
         elif args.kd_loss_func == 'entropyRelN':
-            kd_loss = loss_fmap_entr_reln_sparse(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
-                                        args.multiplier, args.lower_bound, args.activation, top_n_relative=args.top_n_relative)
+            kd_loss = loss_fmap_entr_reln_sparse(visfm.feature_maps[1], visfm.feature_maps[0],
+                                                 args.num_bins, top_n_relative=args.top_n_relative)
         elif args.kd_loss_func == 'entropyRelNDense':
-            kd_loss = loss_fmap_entr_reln_dense(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
-                                             args.multiplier, args.lower_bound, args.activation, top_n_relative=args.top_n_relative)
+            kd_loss = loss_fmap_entr_reln_dense(visfm.feature_maps[1], visfm.feature_maps[0],
+                                                args.num_bins, top_n_relative=args.top_n_relative)
         elif args.kd_loss_func == 'basic':
             if len(visfm.feature_maps) == 2:
                 kd_loss = loss_fmap_kd(visfm.feature_maps[1], visfm.feature_maps[0])
