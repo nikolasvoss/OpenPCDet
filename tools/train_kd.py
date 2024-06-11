@@ -728,8 +728,43 @@ def loss_fmap_entr(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multi
     loss = nn.MSELoss()
     return loss(topN_student_values, topN_teacher_values)
 
+def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5):
+    """
+    Calculates the Mean Squared Error (MSE) loss between the top N values of the student and teacher feature maps.
+    The top N values are determined based on the entropy of the teacher feature map.
 
-def fmapEntropyLossRelativeN(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05, act_fn='sigmoid', top_n_relative=0.75):
+    Args:
+        fmap_student (torch.Tensor): The feature map of the student network.
+        fmap_teacher (torch.Tensor): The feature map of the teacher network.
+        num_bins (int, optional): The number of bins used for the entropy calculation. Defaults to None.
+        top_n_relative (float, optional): The percentage of top N values to consider for the entropy calculation (0-1). Defaults to 0.75.
+
+    Returns:
+        torch.Tensor: The MSE loss between the top N values of the student and teacher feature maps.
+    """
+    # Calculate entropy of the teacher in dense format
+    entr_teacher, _ = visfm.entropyOfFmapsTorch(fmap_teacher, num_bins)
+
+    # Calculate the number of top values to consider
+    top_n = int(top_n_relative * entr_teacher[0].numel())
+    topN_indices = torch.zeros([entr_teacher.shape[0], top_n], dtype=torch.long, device=entr_teacher.device)
+    # Iterate over each batch
+    for i in range(fmap_teacher.shape[0]):
+        # Get the topN indices of the entropy map
+        topN_indices[i] = torch.topk(entr_teacher[i].view(-1), top_n).indices
+
+    # Reshapes the teacher feature map tensor into a 2D tensor and then gathers the top N values
+    # from the reshaped tensor using the indices provided by 'topN_indices'. The 'unsqueeze' and 'expand'
+    # operations are used to match the dimensions of 'topN_indices' with the teacher feature map tensor for correct indexing.
+    topN_teacher_values = (fmap_teacher.view(fmap_teacher.shape[0], fmap_teacher.shape[1], -1)
+                           .gather(-1, topN_indices.unsqueeze(1).expand(-1, fmap_teacher.shape[1], -1)))
+    topN_student_values = (fmap_student.view(fmap_student.shape[0], fmap_student.shape[1], -1)
+                            .gather(-1, topN_indices.unsqueeze(1).expand(-1, fmap_student.shape[1], -1)))
+
+    loss = nn.MSELoss()(topN_student_values, topN_teacher_values)
+
+    return loss
+
 
 def loss_fmap_entr_reln_sparse(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5):
     """Calculates the entropy loss of the with a relative topN value in sparse format
