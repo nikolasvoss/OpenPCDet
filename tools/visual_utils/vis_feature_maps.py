@@ -57,7 +57,7 @@ def printAllModelLayers(model):
         print(name)
 
 
-def vis_fmap(feature_map, output_dir, batch_idx=0, fmap_indices=None, z_plane_indices=None, no_negative_values=False):
+def vis_fmap_2d(feature_map, output_dir, batch_idx=0, fmap_indices=None, z_plane_indices=None, no_negative_values=False):
     """Visualizes feature maps as slices in the z-plane using matplotlib.
     The plots are saved as images in the specified output directory.
 
@@ -297,8 +297,9 @@ def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=
 
     # 1. Sum over all z-planes
     # 2. Calculate entropy over all channels for every single spatial location ("voxel")
-    fmap_entropy, num_bins = entropyOfFmaps(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
-
+    fmap_entropy, num_bins = calc_fmap_entropy(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
+    # fmap_entropy = sumChannelsPerPixel(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
+    # num_bins = 0
     # sigmoid function to make the entropy more visible
     x_shift = 0.7
     multiplier = 15
@@ -391,7 +392,7 @@ def visualizeFmapEntropyVsSparseVals(feature_map, samples_idx, output_dir=None, 
 
     # 1. Sum over all z-planes
     # 2. Calculate entropy over all channels for every single spatial location ("voxel")
-    fmap_entropy, num_bins = entropyOfFmaps(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
+    fmap_entropy, num_bins = calc_fmap_entropy(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
 
     # sigmoid function to make the entropy more visible
     x_shift = 0.7
@@ -555,7 +556,7 @@ def isSingleIntOrListOfInts(value):
     return False
 
 
-def entropyOfFmaps(feature_map):
+def calc_fmap_entropy(feature_map):
     """
         Compute the normalized entropy of a feature map tensor.
 
@@ -617,7 +618,7 @@ def entropyOfFmaps(feature_map):
     return entropy, num_bins
 
 
-def entropyOfFmapsTorch(feature_map, num_bins=None):
+def calc_fmap_entropy_torch(feature_map, num_bins=None):
     """
     Compute the normalized entropy of a feature map tensor.
 
@@ -674,9 +675,9 @@ def entropyOfFmapsTorch(feature_map, num_bins=None):
     return entropy, num_bins
 
 
-def entropyOfFmapsSparse(feature_map, num_bins=None):
+def calc_fmap_entropy_sparse(feature_map, num_bins=None):
     """
-    does the same as entropyOfFmapsTorch, but for sparse tensors
+    does the same as calc_fmap_entropy_torch, but for sparse tensors
     indices are in feature_map.indices, values in feature_map
     batch index is in feature_map.indices[:, 0]
 

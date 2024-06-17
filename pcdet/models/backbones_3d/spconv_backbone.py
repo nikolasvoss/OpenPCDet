@@ -8,7 +8,7 @@ import time
 import os
 
 from ...utils.spconv_utils import replace_feature, spconv
-from tools.visual_utils.vis_feature_maps import entropyOfFmapsSparse
+from tools.visual_utils.vis_feature_maps import calc_fmap_entropy_sparse
 from functools import reduce
 
 
@@ -501,7 +501,7 @@ class VoxelResBackBone8x(nn.Module):
         x_conv4 = self.conv4(x_conv3)
 
         # if getattr(self, 'top_percentage', None) or self.top_percentage < 1.0:
-        #     topn_indices = torch.topk(entropyOfFmapsSparse(x_conv4.features),
+        #     topn_indices = torch.topk(calc_fmap_entropy_sparse(x_conv4.features),
         #                               int(x_conv4.features.shape[0] * self.top_percentage),
         #                               dim=0,
         #                               largest=True,

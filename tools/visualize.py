@@ -173,17 +173,23 @@ def main():
             pred_dicts, ret_dict = model.forward(input_dict)
 
         # Visualize the feature map
-        visfm.visualizeFeatureMap(visfm.feature_maps, output_dir, batch_idx, fmap_idx, z_plane_idx, no_negative_values=True)
-        # visfm.visualizeFeatureMap3d(visfm.feature_maps, output_dir, batch_idx, fmap_idx, input_dict['points'],
-        #                              same_plot=True)
-        # visfm.visualizeFeatureMap3dO3d(visfm.feature_maps, output_dir, batch_idx, fmap_idx, input_dict['points'],
-        #                              same_plot=True,
-        #                              gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
-        #                              pred_boxes=pred_dicts[0]['pred_boxes'])
-        # visfm.visualizeFmapEntropy(visfm.feature_maps, output_dir, i,
-        #                            input_dict['points'],
+        # visfm.vis_fmap_2d(visfm.feature_maps[0], output_dir, batch_idx, fmap_idx, z_plane_idx, no_negative_values=True)
+        visfm.vis_fmap_3d(visfm.feature_maps[0], output_dir, batch_idx, fmap_idx, input_dict['points'],
+                                     same_plot=True,
+                                     gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
+                                     pred_boxes=pred_dicts[0]['pred_boxes'])
+        # visfm.vis_fmap_entropy_3d(feature_map=visfm.feature_maps[0],
+        #                            samples_idx=i,
+        #                            input_points=input_dict['points'],
+        #                            #output_dir=output_dir,
         #                            gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
         #                            pred_boxes=pred_dicts[0]['pred_boxes'])
+        # visfm.visualizeFmapEntropyVsSparseVals(feature_map=visfm.feature_maps[0],
+        #                                        samples_idx=i,
+        #                                       input_points=input_dict['points'],
+        #                                       #output_dir=output_dir,
+        #                                       gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
+        #                                       pred_boxes=pred_dicts[0]['pred_boxes'])
 
 if __name__ == '__main__':
     main()

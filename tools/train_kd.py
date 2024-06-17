@@ -703,7 +703,7 @@ def loss_fmap_entr(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multi
     # check if the shape of the last two dimensions of fmap_student and fmap_teacher are the same
     if fmap_student.shape[-2:] != fmap_teacher.shape[-2:]:
         raise ValueError('Feature maps of student and teacher do not have the same shape in the last two dimensions.')
-    entr_teacher, _ = visfm.entropyOfFmapsTorch(fmap_teacher, num_bins)
+    entr_teacher, _ = visfm.calc_fmap_entropy_torch(fmap_teacher, num_bins)
 
     # find top N values for each batch element entr_teacher[batch, :,:]
     # entr_teacher needs to be flattened in order to work with topk
@@ -743,7 +743,7 @@ def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_r
         torch.Tensor: The MSE loss between the top N values of the student and teacher feature maps.
     """
     # Calculate entropy of the teacher in dense format
-    entr_teacher, _ = visfm.entropyOfFmapsTorch(fmap_teacher, num_bins)
+    entr_teacher, _ = visfm.calc_fmap_entropy_torch(fmap_teacher, num_bins)
 
     # Calculate the number of top values to consider
     top_n = int(top_n_relative * entr_teacher[0].numel())
@@ -788,7 +788,7 @@ def loss_fmap_entr_reln_sparse(fmap_student, fmap_teacher, num_bins=None, top_n_
     batch_counts = torch.cat((torch.tensor([0], device=batch_counts.device),
                               torch.cumsum(batch_counts, dim=0)))
 
-    entr_teacher = visfm.entropyOfFmapsSparse(feature_map=fmap_teacher.features, num_bins=num_bins)
+    entr_teacher = visfm.calc_fmap_entropy_sparse(feature_map=fmap_teacher.features, num_bins=num_bins)
 
     topN_features_teacher = torch.empty(0, device=fmap_teacher.features.device)
     topN_features_student = torch.empty(0, device=fmap_student.features.device)
