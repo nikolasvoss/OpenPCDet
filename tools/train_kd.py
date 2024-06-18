@@ -24,6 +24,7 @@ import gc  # Required for garbage collection
 
 import visual_utils.vis_feature_maps as visfm
 import local_paths
+from pcdet.utils.spconv_utils import spconv
 
 
 def parse_config():
@@ -71,6 +72,8 @@ def parse_config():
     parser.add_argument('--kd_loss_weight', type=float, default=1.0, help='weight for kd loss')
     parser.add_argument('--gt_loss_weight', type=float, default=1.0, help='weight for gt loss')
     parser.add_argument('--num_bins', type=int, default=None, help='number of bins for entropy histogram')
+    parser.add_argument('--use_batch_act', action='store_true', default=True,
+                        help='use batchnorm + activation for kd loss calculation')
     parser.add_argument('--x_shift', type=float, default=0.5, help='x-shift (threshold) for entropy sigmoid')
     parser.add_argument('--multiplier', type=float, default=15, help='multiplier (edge steepness) for entropy sigmoid')
     parser.add_argument('--lower_bound', type=float, default=0.05,
@@ -468,20 +471,22 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
                 raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
         elif args.kd_loss_func == 'entropyRelN':
             kd_loss = loss_fmap_entr_reln_sparse(visfm.feature_maps[1], visfm.feature_maps[0],
-                                                 args.num_bins, top_n_relative=args.top_n_relative)
+                                                 args.num_bins, top_n_relative=args.top_n_relative,
+                                                 use_batch_act=args.use_batch_act)
         elif args.kd_loss_func == 'entropyRelNDense':
             kd_loss = loss_fmap_entr_reln_dense(visfm.feature_maps[1], visfm.feature_maps[0],
-                                                args.num_bins, top_n_relative=args.top_n_relative)
+                                                args.num_bins, top_n_relative=args.top_n_relative,
+                                                 use_batch_act=args.use_batch_act)
         elif args.kd_loss_func == 'basic':
             if len(visfm.feature_maps) == 2:
-                kd_loss = loss_fmap_kd(visfm.feature_maps[1], visfm.feature_maps[0])
+                kd_loss = loss_fmap_kd(visfm.feature_maps[1], visfm.feature_maps[0], use_batch_act=args.use_batch_act)
             elif len(visfm.feature_maps) == 4:
-                kd_loss = loss_fmap_kd(visfm.feature_maps[2], visfm.feature_maps[0])
-                kd_loss += loss_fmap_kd(visfm.feature_maps[3], visfm.feature_maps[1])
+                kd_loss = loss_fmap_kd(visfm.feature_maps[2], visfm.feature_maps[0], use_batch_act=args.use_batch_act)
+                kd_loss += loss_fmap_kd(visfm.feature_maps[3], visfm.feature_maps[1], use_batch_act=args.use_batch_act)
             elif len(visfm.feature_maps) == 6:
-                kd_loss = loss_fmap_kd(visfm.feature_maps[3], visfm.feature_maps[0])
-                kd_loss += loss_fmap_kd(visfm.feature_maps[4], visfm.feature_maps[1])
-                kd_loss += loss_fmap_kd(visfm.feature_maps[5], visfm.feature_maps[2])
+                kd_loss = loss_fmap_kd(visfm.feature_maps[3], visfm.feature_maps[0], use_batch_act=args.use_batch_act)
+                kd_loss += loss_fmap_kd(visfm.feature_maps[4], visfm.feature_maps[1], use_batch_act=args.use_batch_act)
+                kd_loss += loss_fmap_kd(visfm.feature_maps[5], visfm.feature_maps[2], use_batch_act=args.use_batch_act)
             else:
                 raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
         else:
@@ -667,13 +672,18 @@ def createHooks(model, model_teacher, args, logger):
         logger.info('Created teacher hook for layer: %s' % args.layer2_name_teacher)
 
 
-def loss_fmap_kd(fmap_student, fmap_teacher):
+def loss_fmap_kd(fmap_student, fmap_teacher, use_batch_act=False):
     """Calculates the KL divergence between the feature maps of the student and teacher networks.
     Firstly the different number of channels must be handled
     """
     if hasattr(fmap_student, 'dense'):
         fmap_student = fmap_student.dense()
         fmap_teacher = fmap_teacher.dense()
+
+    if use_batch_act:
+        batch_act = nn.Sequential(nn.BatchNorm1d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), nn.ReLU()).to(fmap_teacher.device)
+        fmap_student = batch_act(fmap_student)
+        fmap_teacher = batch_act(fmap_teacher)
 
     # loss = torch.sum((fmap_student-fmap_teacher)**2, dim=1)     # sum over all channels
     loss = nn.MSELoss()
@@ -718,7 +728,7 @@ def loss_fmap_entr(fmap_student, fmap_teacher, num_bins=None, top_n=5000):
     loss = nn.MSELoss()
     return loss(topN_student_values, topN_teacher_values)
 
-def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5):
+def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5, use_batch_act=False):
     """
     Calculates the Mean Squared Error (MSE) loss between the top N values of the student and teacher feature maps.
     The top N values are determined based on the entropy of the teacher feature map.
@@ -732,6 +742,12 @@ def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_r
     Returns:
         torch.Tensor: The MSE loss between the top N values of the student and teacher feature maps.
     """
+    # apply batch norm and ReLU
+    if use_batch_act:
+        batch_act = nn.Sequential(nn.BatchNorm1d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), nn.ReLU()).to(fmap_teacher.device)
+        fmap_student = batch_act(fmap_student)
+        fmap_teacher = batch_act(fmap_teacher)
+
     # Calculate entropy of the teacher in dense format
     entr_teacher, _ = visfm.calc_fmap_entropy_torch(fmap_teacher, num_bins)
 
@@ -756,7 +772,7 @@ def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_r
     return loss
 
 
-def loss_fmap_entr_reln_sparse(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5):
+def loss_fmap_entr_reln_sparse(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5, use_batch_act=False):
     """Calculates the entropy loss of the with a relative topN value in sparse format
     1. Counts values per batch and calculates the relative topN value
     2. Calculate entropy of the teacher in sparse format
@@ -773,6 +789,12 @@ def loss_fmap_entr_reln_sparse(fmap_student, fmap_teacher, num_bins=None, top_n_
     Output:
     - loss: MSE-Loss between the topN values of the student and teacher
     """
+    if use_batch_act:
+        batch_act = spconv.SparseSequential(nn.BatchNorm1d(fmap_teacher.features.shape[1], eps=1e-3, momentum=0.01),
+                                            nn.ReLU()).to(fmap_teacher.features.device)
+        fmap_student = batch_act(fmap_student)
+        fmap_teacher = batch_act(fmap_teacher)
+
     batch_counts = torch.bincount(fmap_teacher.indices[:, 0])
     batch_counts_relative = (batch_counts * top_n_relative).int()
     batch_counts = torch.cat((torch.tensor([0], device=batch_counts.device),
