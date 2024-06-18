@@ -66,7 +66,8 @@ def parse_config():
     parser.add_argument('--v', action='store_true', default=False, help='verbose logging')
 
     # add arguments for kd loss and entropy loss
-    parser.add_argument('--kd_loss_func', type=str, default='entropy', help='kd loss function')
+    parser.add_argument('--kd_loss_func', type=str, default='entropyRelN',
+                        help='kd loss function. Options: basic, entropy, entropyRelN, entropyRelNDense')
     parser.add_argument('--kd_loss_weight', type=float, default=1.0, help='weight for kd loss')
     parser.add_argument('--gt_loss_weight', type=float, default=1.0, help='weight for gt loss')
     parser.add_argument('--num_bins', type=int, default=None, help='number of bins for entropy histogram')
@@ -455,20 +456,14 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
 
         if args.kd_loss_func == 'entropy':
             if len(visfm.feature_maps) == 2:
-                kd_loss = loss_fmap_entr(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
+                kd_loss = loss_fmap_entr(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, top_n=args.top_n)
             elif len(visfm.feature_maps) == 4:
-                kd_loss = loss_fmap_entr(visfm.feature_maps[2], visfm.feature_maps[0], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
-                kd_loss += loss_fmap_entr(visfm.feature_maps[3], visfm.feature_maps[1], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
+                kd_loss = loss_fmap_entr(visfm.feature_maps[2], visfm.feature_maps[0], args.num_bins, top_n=args.top_n)
+                kd_loss += loss_fmap_entr(visfm.feature_maps[3], visfm.feature_maps[1], args.num_bins, top_n=args.top_n)
             elif len(visfm.feature_maps) == 6:
-                kd_loss = loss_fmap_entr(visfm.feature_maps[3], visfm.feature_maps[0], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
-                kd_loss += loss_fmap_entr(visfm.feature_maps[4], visfm.feature_maps[1], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
-                kd_loss += loss_fmap_entr(visfm.feature_maps[5], visfm.feature_maps[2], args.num_bins, args.x_shift,
-                                      args.multiplier, args.lower_bound, args.activation, top_n=args.top_n)
+                kd_loss = loss_fmap_entr(visfm.feature_maps[3], visfm.feature_maps[0], args.num_bins, top_n=args.top_n)
+                kd_loss += loss_fmap_entr(visfm.feature_maps[4], visfm.feature_maps[1], args.num_bins, top_n=args.top_n)
+                kd_loss += loss_fmap_entr(visfm.feature_maps[5], visfm.feature_maps[2], args.num_bins, top_n=args.top_n)
             else:
                 raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
         elif args.kd_loss_func == 'entropyRelN':
@@ -685,7 +680,7 @@ def loss_fmap_kd(fmap_student, fmap_teacher):
     return loss(fmap_student, fmap_teacher)
 
 
-def loss_fmap_entr(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multiplier=15, lower_bound=0.05, act_fn='sigmoid', top_n=5000):
+def loss_fmap_entr(fmap_student, fmap_teacher, num_bins=None, top_n=5000):
     """Calculates the entropy of the feature maps of the student network
     1. Sum over the z-axis -> fmap_student.shape [batch, channel, y, x]: [8, 96, 128, 128], fmap_teacher.shape: [8, 128, 128, 128]
     2. Calculate the entropy of the teacher -> entr_teacher.shape: [8, 128, 128]
@@ -719,11 +714,6 @@ def loss_fmap_entr(fmap_student, fmap_teacher, num_bins=None, x_shift=0.7, multi
     # Use advanced indexing to get all the required values at once
     topN_teacher_values = fmap_teacher[batch_indices[:, :, 0], :, indices[:, :, 0], indices[:, :, 1]]
     topN_student_values = fmap_student[batch_indices[:, :, 0], :, indices[:, :, 0], indices[:, :, 1]]
-
-    if act_fn == 'sigmoid':
-        # sigmoid function to improve visibility
-        entr_teacher = torch.sigmoid(multiplier * (entr_teacher - x_shift))
-        entr_teacher[entr_teacher < lower_bound] = 0
 
     loss = nn.MSELoss()
     return loss(topN_student_values, topN_teacher_values)
