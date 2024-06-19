@@ -637,6 +637,10 @@ def calc_fmap_entropy_torch(feature_map, num_bins=None):
     int: The number of bins used for histogram binning.
     """
 
+    # Check if feature_map is a tensor
+    if not torch.is_tensor(feature_map):
+        raise ValueError("feature_map must be a torch tensor.")
+
     # Expects a feature map tensor of shape [feature_maps, y, x]
     # Abort if the feature map is empty
     if feature_map.max() == 0 and feature_map.min() == 0:
@@ -658,7 +662,9 @@ def calc_fmap_entropy_torch(feature_map, num_bins=None):
     # num_bins, fewer often work better
     if num_bins is None:
         num_bins = max(3, feature_map.shape[0] // 20)
-    # print('num_bins: ', num_bins)
+    else:
+        assert isinstance(num_bins, int), "num_bins must be an integer."
+        assert num_bins > 0, "num_bins must be greater than 0."
 
     # Compute histograms
     bin_edges = torch.linspace(0, 1, num_bins + 1)
@@ -688,6 +694,9 @@ def calc_fmap_entropy_sparse(feature_map, num_bins=None):
     feature_map of shape [points, 1]
 
     """
+    # Check if feature_map is a tensor
+    if not torch.is_tensor(feature_map):
+        raise ValueError("feature_map must be a torch tensor.")
 
     feature_map = feature_map.to(torch.float32) # somehow does not work with float16. Could be issue with  old torch version.
     # Cut outliers and normalize. Remove zeros first
@@ -704,6 +713,9 @@ def calc_fmap_entropy_sparse(feature_map, num_bins=None):
     # num_bins, fewer often work better
     if num_bins is None:
         num_bins = max(3, feature_map.shape[1] // 20)
+    else:
+        assert isinstance(num_bins, int), "num_bins must be an integer."
+        assert num_bins > 0, "num_bins must be greater than 0."
 
     # Compute histograms
     bin_edges = torch.linspace(0, 1, num_bins + 1)
