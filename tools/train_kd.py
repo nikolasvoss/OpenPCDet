@@ -680,12 +680,14 @@ def loss_fmap_kd(fmap_student, fmap_teacher, use_batch_act=False):
         fmap_student = fmap_student.dense()
         fmap_teacher = fmap_teacher.dense()
 
+    fmap_student = fmap_student.to(torch.float32)
+    fmap_teacher = fmap_teacher.to(torch.float32)
+
     if use_batch_act:
-        batch_act = nn.Sequential(nn.BatchNorm1d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), nn.ReLU()).to(fmap_teacher.device)
+        batch_act = nn.Sequential(nn.BatchNorm3d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), nn.ReLU()).to(fmap_teacher.device)
         fmap_student = batch_act(fmap_student)
         fmap_teacher = batch_act(fmap_teacher)
 
-    # loss = torch.sum((fmap_student-fmap_teacher)**2, dim=1)     # sum over all channels
     loss = nn.MSELoss()
     return loss(fmap_student, fmap_teacher)
 
