@@ -746,7 +746,12 @@ def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_r
     """
     # apply batch norm and ReLU
     if use_batch_act:
-        batch_act = nn.Sequential(nn.BatchNorm1d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), nn.ReLU()).to(fmap_teacher.device)
+        if len(fmap_teacher.shape) == 4:
+            batch_act = nn.Sequential(nn.BatchNorm2d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), nn.ReLU()).to(fmap_teacher.device)
+        elif len(fmap_teacher.shape) == 5:
+            batch_act = nn.Sequential(nn.BatchNorm3d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), nn.ReLU()).to(fmap_teacher.device)
+        else:
+            raise ValueError("Invalid number of dimensions for the feature maps")
         fmap_student = batch_act(fmap_student)
         fmap_teacher = batch_act(fmap_teacher)
 
