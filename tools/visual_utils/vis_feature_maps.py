@@ -269,6 +269,7 @@ def vis_fmap_3d(feature_map, output_dir, batch_idx=0, fmap_indices=None, input_p
             vis.add_geometry(input_point_cloud)
         else:  # no input points were passed
             vis.add_geometry(voxel_grid)
+        vis.get_view_control().set_zoom(0.3)
         vis.run()
         vis.destroy_window()
 
@@ -358,7 +359,7 @@ def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=
     
     vis.add_geometry(voxel_grid)
 
-    vis.get_view_control().set_zoom(0.5)
+    vis.get_view_control().set_zoom(0.3)
     vis.run()
     # save the entropy image. add x_shift, multiplier and num_bins to the filename
     if output_dir is not None:

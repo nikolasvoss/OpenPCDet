@@ -439,8 +439,6 @@ class VoxelResBackBone8x(nn.Module):
             self.feat_adapt_single[0].weight.requires_grad = True
             nn.init.zeros_(self.feat_adapt_single[0].bias.data)
             nn.init.kaiming_normal_(self.feat_adapt_single[0].weight.data)
-            # self.feat_adapt_single[0].bias.data.fill_(0.)
-            # self.feat_adapt_single[0].weight.data.fill_(1.)
             
         if use_feat_adapt_autoencoder is True:
             # currently only used for teacher to student adaptation
@@ -495,8 +493,8 @@ class VoxelResBackBone8x(nn.Module):
         x_conv1 = self.conv1(x)
         x_conv2 = self.conv2(x_conv1)
         # save the result of self.conv3[1].conv1 in x_conv_adapt
-        if getattr(self, 'feat_adapt_single', None):
-            x_conv_adapt = self.conv3[1].conv1(self.conv3[0](x_conv2))
+        # if getattr(self, 'feat_adapt_single', None):
+        #     x_conv_adapt = self.conv3[1].conv1(self.conv3[0](x_conv2))
         x_conv3 = self.conv3(x_conv2)
         x_conv4 = self.conv4(x_conv3)
 
@@ -520,7 +518,8 @@ class VoxelResBackBone8x(nn.Module):
 
         # if student, insert feature adaptation layer
         if getattr(self, 'feat_adapt_single', None):
-            self.feat_adapt_single(x_conv_adapt)
+            # self.feat_adapt_single(x_conv_adapt)
+            self.feat_adapt_single(self.conv_out[0](x_conv4))
         if getattr(self, 'feat_adapt_autoencoder', None):
             self.feat_adapt_autoencoder(self.conv_out[0](x_conv4))
         if getattr(self, 'full_autoencoder', None):
