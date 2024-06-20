@@ -72,7 +72,7 @@ def parse_config():
     parser.add_argument('--kd_loss_weight', type=float, default=1.0, help='weight for kd loss')
     parser.add_argument('--gt_loss_weight', type=float, default=1.0, help='weight for gt loss')
     parser.add_argument('--num_bins', type=int, default=None, help='number of bins for entropy histogram')
-    parser.add_argument('--use_batch_act', action='store_true', default=True,
+    parser.add_argument('--kd_bnorm_act', type=str, default=None,
                         help='use batchnorm + activation for kd loss calculation')
     parser.add_argument('--x_shift', type=float, default=0.5, help='x-shift (threshold) for entropy sigmoid')
     parser.add_argument('--multiplier', type=float, default=15, help='multiplier (edge steepness) for entropy sigmoid')
@@ -460,21 +460,21 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
         if args.kd_loss_func == 'entropyRelN':
             kd_loss = loss_fmap_entr_reln_sparse(visfm.feature_maps[1], visfm.feature_maps[0],
                                                  args.num_bins, top_n_relative=args.top_n_relative,
-                                                 use_batch_act=args.use_batch_act)
+                                                 kd_bnorm_act=args.kd_bnorm_act)
         elif args.kd_loss_func == 'entropyRelNDense':
             kd_loss = loss_fmap_entr_reln_dense(visfm.feature_maps[1], visfm.feature_maps[0],
                                                 args.num_bins, top_n_relative=args.top_n_relative,
-                                                 use_batch_act=args.use_batch_act)
+                                                 kd_bnorm_act=args.kd_bnorm_act)
         elif args.kd_loss_func == 'basic':
             if len(visfm.feature_maps) == 2:
-                kd_loss = loss_fmap_kd(visfm.feature_maps[1], visfm.feature_maps[0], use_batch_act=args.use_batch_act)
+                kd_loss = loss_fmap_kd(visfm.feature_maps[1], visfm.feature_maps[0], kd_bnorm_act=args.kd_bnorm_act)
             elif len(visfm.feature_maps) == 4:
-                kd_loss = loss_fmap_kd(visfm.feature_maps[2], visfm.feature_maps[0], use_batch_act=args.use_batch_act)
-                kd_loss += loss_fmap_kd(visfm.feature_maps[3], visfm.feature_maps[1], use_batch_act=args.use_batch_act)
+                kd_loss = loss_fmap_kd(visfm.feature_maps[2], visfm.feature_maps[0], kd_bnorm_act=args.kd_bnorm_act)
+                kd_loss += loss_fmap_kd(visfm.feature_maps[3], visfm.feature_maps[1], kd_bnorm_act=args.kd_bnorm_act)
             elif len(visfm.feature_maps) == 6:
-                kd_loss = loss_fmap_kd(visfm.feature_maps[3], visfm.feature_maps[0], use_batch_act=args.use_batch_act)
-                kd_loss += loss_fmap_kd(visfm.feature_maps[4], visfm.feature_maps[1], use_batch_act=args.use_batch_act)
-                kd_loss += loss_fmap_kd(visfm.feature_maps[5], visfm.feature_maps[2], use_batch_act=args.use_batch_act)
+                kd_loss = loss_fmap_kd(visfm.feature_maps[3], visfm.feature_maps[0], kd_bnorm_act=args.kd_bnorm_act)
+                kd_loss += loss_fmap_kd(visfm.feature_maps[4], visfm.feature_maps[1], kd_bnorm_act=args.kd_bnorm_act)
+                kd_loss += loss_fmap_kd(visfm.feature_maps[5], visfm.feature_maps[2], kd_bnorm_act=args.kd_bnorm_act)
             else:
                 raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
         else:
@@ -660,7 +660,7 @@ def createHooks(model, model_teacher, args, logger):
         logger.info('Created teacher hook for layer: %s' % args.layer2_name_teacher)
 
 
-def loss_fmap_kd(fmap_student, fmap_teacher, use_batch_act=False):
+def loss_fmap_kd(fmap_student, fmap_teacher, kd_bnorm_act=None):
     """Calculates the KL divergence between the feature maps of the student and teacher networks.
     Firstly the different number of channels must be handled
     """
@@ -671,8 +671,11 @@ def loss_fmap_kd(fmap_student, fmap_teacher, use_batch_act=False):
     fmap_student = fmap_student.to(torch.float32)
     fmap_teacher = fmap_teacher.to(torch.float32)
 
-    if use_batch_act:
-        batch_act = nn.Sequential(nn.BatchNorm3d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), nn.ReLU()).to(fmap_teacher.device)
+    if kd_bnorm_act is not None:
+        act_fn = nn.ReLU() if kd_bnorm_act == 'relu' \
+            else (nn.GELU() if kd_bnorm_act == 'gelu'
+                  else ValueError("Invalid activation function"))
+        batch_act = nn.Sequential(nn.BatchNorm3d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), act_fn).to(fmap_teacher.device)
         fmap_student = batch_act(fmap_student)
         fmap_teacher = batch_act(fmap_teacher)
 
@@ -680,7 +683,7 @@ def loss_fmap_kd(fmap_student, fmap_teacher, use_batch_act=False):
     return loss(fmap_student, fmap_teacher)
 
 
-def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5, use_batch_act=False):
+def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5, kd_bnorm_act=None):
     """
     Calculates the Mean Squared Error (MSE) loss between the top N values of the student and teacher feature maps.
     The top N values are determined based on the entropy of the teacher feature map.
@@ -695,11 +698,14 @@ def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_r
         torch.Tensor: The MSE loss between the top N values of the student and teacher feature maps.
     """
     # apply batch norm and ReLU
-    if use_batch_act:
+    if kd_bnorm_act is not None:
+        act_fn = nn.ReLU() if kd_bnorm_act == 'relu' \
+            else (nn.GELU() if kd_bnorm_act == 'gelu'
+                  else ValueError("Invalid activation function"))
         if len(fmap_teacher.shape) == 4:
-            batch_act = nn.Sequential(nn.BatchNorm2d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), nn.ReLU()).to(fmap_teacher.device)
+            batch_act = nn.Sequential(nn.BatchNorm2d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), act_fn).to(fmap_teacher.device)
         elif len(fmap_teacher.shape) == 5:
-            batch_act = nn.Sequential(nn.BatchNorm3d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), nn.ReLU()).to(fmap_teacher.device)
+            batch_act = nn.Sequential(nn.BatchNorm3d(fmap_teacher.shape[1], eps=1e-3, momentum=0.01), act_fn).to(fmap_teacher.device)
         else:
             raise ValueError("Invalid number of dimensions for the feature maps")
         fmap_student = batch_act(fmap_student)
@@ -729,7 +735,7 @@ def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_r
     return loss
 
 
-def loss_fmap_entr_reln_sparse(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5, use_batch_act=False):
+def loss_fmap_entr_reln_sparse(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5, kd_bnorm_act=None):
     """Calculates the entropy loss of the with a relative topN value in sparse format
     1. Counts values per batch and calculates the relative topN value
     2. Calculate entropy of the teacher in sparse format
@@ -746,9 +752,12 @@ def loss_fmap_entr_reln_sparse(fmap_student, fmap_teacher, num_bins=None, top_n_
     Output:
     - loss: MSE-Loss between the topN values of the student and teacher
     """
-    if use_batch_act:
+    if kd_bnorm_act is not None:
+        act_fn = nn.ReLU() if kd_bnorm_act == 'relu' \
+            else (nn.GELU() if kd_bnorm_act == 'gelu'
+                  else ValueError("Invalid activation function"))
         batch_act = spconv.SparseSequential(nn.BatchNorm1d(fmap_teacher.features.shape[1], eps=1e-3, momentum=0.01),
-                                            nn.ReLU()).to(fmap_teacher.features.device)
+                                            act_fn).to(fmap_teacher.features.device)
         fmap_student = batch_act(fmap_student)
         fmap_teacher = batch_act(fmap_teacher)
 
