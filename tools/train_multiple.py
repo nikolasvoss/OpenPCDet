@@ -8,13 +8,15 @@ num_bins_values = 15
 x_shift_values = [0.7]
 multiplier_values = [15]
 eval_after_epoch = False
-kd_loss_func = "entropyRelN" # "basic", "entropy", "entropyRelN"
+kd_loss_func = ["basic", "basic", "entropyRelN"] # "basic", "entropy", "entropyRelN", "entropyRelNDense"
 top_n = 5000
-top_n_relative = 0.75
+top_n_relative = 0.5
 gt_loss_weight = 1
 kd_loss_weight = 1
+kd_bnorm_act = "relu" # "relu", "gelu"
 epochs = 15
 verbose = False
+use_amp = True
 
 cfg_file = local_paths.cfg_file_multi_train
 pretrained_model = None # pretrained student model
@@ -41,11 +43,12 @@ subprocess.run(["cp", "local_paths.py", f"{output_dir}/src"])
 subprocess.run(["cp", "train_kd.py", f"{output_dir}/src"])
 subprocess.run(["cp", "./visual_utils/vis_feature_maps.py", f"{output_dir}/src"])
 subprocess.run(["cp", "../pcdet/models/backbones_3d/spconv_backbone.py", f"{output_dir}/src"])
+subprocess.run(["cp", "../pcdet/models/backbones_2d/base_bev_backbone.py", f"{output_dir}/src"])
 
 # Loop over the parameters
 for k in range(1):
     # add a subdirectory for each run that is named after the parameter
-    output_dir_num_bins = f"{output_dir}/kd_loss_{kd_loss_func}"
+    output_dir_num_bins = f"{output_dir}/kd_loss_{kd_loss_func}_kd_bnorm_{kd_bnorm_act}"
     os.makedirs(output_dir_num_bins, exist_ok=False)
     # create a file where all current training parameters are saved
     with open(f"{output_dir_num_bins}/training_parameters.txt", "w") as file:
@@ -58,6 +61,7 @@ for k in range(1):
         file.write(f"x_shift: {x_shift_values[0]}\n")
         file.write(f"multiplier: {multiplier_values[0]}\n")
         file.write(f"eval_after_epoch: {eval_after_epoch}\n")
+        file.write(f"kd_bnorm_act: {kd_bnorm_act}\n")
         file.write(f"kd_loss_func: {kd_loss_func}\n")
         file.write(f"top_n: {top_n}\n")
         file.write(f"top_n_relative: {top_n_relative}\n")
@@ -69,7 +73,7 @@ for k in range(1):
         file.write(f"layer1_name_student: {layer1_name_student}\n")
         file.write(f"layer2_name_teacher: {layer2_name_teacher}\n")
         file.write(f"layer2_name_student: {layer2_name_student}\n")
-        file.write(f"Comment: init adapt weights with kaiming normal and learned weights and biases.")
+        file.write(f"Comment: init adapt weights with kaiming normal and learned weights and biases.\n")
 
     # Define the command as a list
     cmd = ["python", "train_kd.py",
@@ -85,6 +89,7 @@ for k in range(1):
            "--kd_loss_weight", str(kd_loss_weight),
            "--x_shift", str(x_shift_values[0]),
            "--multiplier", str(multiplier_values[0]),
+           "--kd_bnorm_act", str(kd_bnorm_act),
            "--layer0_name_teacher", layer0_name_teacher,
            "--layer0_name_student", layer0_name_student]
 
@@ -103,7 +108,8 @@ for k in range(1):
         cmd.append("--eval_after_epoch")
     if verbose:
         cmd.append("--v")
-    cmd.append("--use_amp")
+    if use_amp:
+        cmd.append("--use_amp")
     cmd.append("--fix_random_seed")
 
     print("Running with: ", cmd)
