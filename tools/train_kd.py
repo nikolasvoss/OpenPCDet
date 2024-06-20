@@ -457,19 +457,7 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
         ####################################################
         start_time = time.time()
 
-        if args.kd_loss_func == 'entropy':
-            if len(visfm.feature_maps) == 2:
-                kd_loss = loss_fmap_entr(visfm.feature_maps[1], visfm.feature_maps[0], args.num_bins, top_n=args.top_n)
-            elif len(visfm.feature_maps) == 4:
-                kd_loss = loss_fmap_entr(visfm.feature_maps[2], visfm.feature_maps[0], args.num_bins, top_n=args.top_n)
-                kd_loss += loss_fmap_entr(visfm.feature_maps[3], visfm.feature_maps[1], args.num_bins, top_n=args.top_n)
-            elif len(visfm.feature_maps) == 6:
-                kd_loss = loss_fmap_entr(visfm.feature_maps[3], visfm.feature_maps[0], args.num_bins, top_n=args.top_n)
-                kd_loss += loss_fmap_entr(visfm.feature_maps[4], visfm.feature_maps[1], args.num_bins, top_n=args.top_n)
-                kd_loss += loss_fmap_entr(visfm.feature_maps[5], visfm.feature_maps[2], args.num_bins, top_n=args.top_n)
-            else:
-                raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
-        elif args.kd_loss_func == 'entropyRelN':
+        if args.kd_loss_func == 'entropyRelN':
             kd_loss = loss_fmap_entr_reln_sparse(visfm.feature_maps[1], visfm.feature_maps[0],
                                                  args.num_bins, top_n_relative=args.top_n_relative,
                                                  use_batch_act=args.use_batch_act)
@@ -691,44 +679,6 @@ def loss_fmap_kd(fmap_student, fmap_teacher, use_batch_act=False):
     loss = nn.MSELoss()
     return loss(fmap_student, fmap_teacher)
 
-
-def loss_fmap_entr(fmap_student, fmap_teacher, num_bins=None, top_n=5000):
-    """Calculates the entropy of the feature maps of the student network
-    1. Sum over the z-axis -> fmap_student.shape [batch, channel, y, x]: [8, 96, 128, 128], fmap_teacher.shape: [8, 128, 128, 128]
-    2. Calculate the entropy of the teacher -> entr_teacher.shape: [8, 128, 128]
-    3. get top N values of the entropy map -> indices.shape: [8, N, 2] 2: x, y
-    4. get top N values of the feature maps of the student and teacher -> topN_student_values.shape: [8, channel, N]
-    5. calculate the loss
-
-    """
-    if hasattr(fmap_student, 'dense'):
-        fmap_student = fmap_student.dense()
-        fmap_teacher = fmap_teacher.dense()
-    # sum over z axis
-    fmap_student = fmap_student.sum(axis=-3, keepdims=False)
-    fmap_teacher = fmap_teacher.sum(axis=-3, keepdims=False)
-    # check if the shape of the last two dimensions of fmap_student and fmap_teacher are the same
-    if fmap_student.shape[-2:] != fmap_teacher.shape[-2:]:
-        raise ValueError('Feature maps of student and teacher do not have the same shape in the last two dimensions.')
-    entr_teacher, _ = visfm.calc_fmap_entropy_torch(fmap_teacher, num_bins)
-
-    # find top N values for each batch element entr_teacher[batch, :,:]
-    # entr_teacher needs to be flattened in order to work with topk
-    # indices_flattened.shape = [batch, N]
-    # [1] means to only use the second return value of topk
-    indices_flattened = torch.topk(torch.flatten(entr_teacher, start_dim=1), top_n, dim=1)[1]
-
-    # convert the flattened indices back to 2D indices
-    indices = torch.stack((indices_flattened // entr_teacher.shape[-1], indices_flattened % entr_teacher.shape[-1]), dim=-1)
-    # Get the indices for all batches at once
-    batch_indices = torch.arange(indices.shape[0]).view(-1, 1, 1).expand_as(indices).to(indices.device)
-
-    # Use advanced indexing to get all the required values at once
-    topN_teacher_values = fmap_teacher[batch_indices[:, :, 0], :, indices[:, :, 0], indices[:, :, 1]]
-    topN_student_values = fmap_student[batch_indices[:, :, 0], :, indices[:, :, 0], indices[:, :, 1]]
-
-    loss = nn.MSELoss()
-    return loss(topN_student_values, topN_teacher_values)
 
 def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5, use_batch_act=False):
     """
