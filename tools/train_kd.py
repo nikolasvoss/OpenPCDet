@@ -33,14 +33,14 @@ def parse_config():
                         default=local_paths.cfg_file_multi_train,
                         help='specify the config for training')
     parser.add_argument('--output_dir', type=str, help='specify an output directory if needed',
-                        default=None) #local_paths.output_dir_train)
+                        default=None)
     parser.add_argument('--batch_size', type=int, default=8, required=False, help='batch size for training')
     parser.add_argument('--epochs', type=int, default=15, required=False, help='number of epochs to train for')
     parser.add_argument('--workers', type=int, default=4, help='number of workers for dataloader')
     parser.add_argument('--extra_tag', type=str, default='default', help='extra tag for this experiment')
     parser.add_argument('--ckpt', type=str, default=None, help='can be used to continue training')
     parser.add_argument('--pretrained_model', type=str, help='pretrained_model',
-                        default=None)#'/home/niko/Documents/sicherung_trainings/second_s_1_240308/checkpoint_epoch_15.pth')
+                        default=None)
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--sync_bn', action='store_true', default=False, help='whether to use sync bn')
@@ -72,29 +72,19 @@ def parse_config():
     parser.add_argument('--kd_loss_weight', type=float, default=1.0, help='weight for kd loss')
     parser.add_argument('--gt_loss_weight', type=float, default=1.0, help='weight for gt loss')
     parser.add_argument('--num_bins', type=int, default=None, help='number of bins for entropy histogram')
-    # currently not implemented 
-    # parser.add_argument('--kd_norm', type=str, default=None, choices=[None, 'batchnorm', 'layernorm'],
-    #                     help='use normalization for kd loss calculation')
-    parser.add_argument('--kd_act', type=str, default=None, choices=[None, 'relu', 'gelu'],
+    parser.add_argument('--kd_act', type=str, default='relu', choices=[None, 'relu', 'gelu'],
                         help='use activation for kd loss calculation')
-    parser.add_argument('--x_shift', type=float, default=0.5, help='x-shift (threshold) for entropy sigmoid')
-    parser.add_argument('--multiplier', type=float, default=15, help='multiplier (edge steepness) for entropy sigmoid')
-    parser.add_argument('--lower_bound', type=float, default=0.05,
-                        help='lower bound for entropy loss. All values below this are set to 0')
-    parser.add_argument('--activation', type=str, default=None, help='activation function used after entropy calculation')
-    parser.add_argument('--top_n', type=int, default=5000, help='top n voxels to consider for entropy calculation')
     parser.add_argument('--top_n_relative', type=float, default=0.5, help='top n voxels to consider for entropyRelativeN calculation')
 
     parser.add_argument('--pretrained_model_teacher', type=str, help='pretrained model for teacher',
                         default=local_paths.pretrained_model_teacher_multi)
-    parser.add_argument('--layer0_name_teacher', type=str, default="backbone_2d.blocks.0.16", help='layer0 name for teacher')
+    parser.add_argument('--layer0_name_teacher', type=str, default="backbone_3d.conv_out.0", help='layer0 name for teacher')
     parser.add_argument('--layer1_name_teacher', type=str, default=None, help='layer1 name for teacher')
     parser.add_argument('--layer2_name_teacher', type=str, default=None, help='layer2 name for teacher')
     parser.add_argument('--layer0_name_student', type=str, default="backbone_3d.feat_adapt_single.0", help='layer0 name for student')
     parser.add_argument('--layer1_name_student', type=str, default=None, help='layer1 name for student')
     parser.add_argument('--layer2_name_student', type=str, default=None, help='layer2 name for student')
     
-
     args = parser.parse_args()
 
     cfg_from_yaml_file(args.cfg_file, cfg)
@@ -351,8 +341,6 @@ def train_kd_model(model, model_teacher, optimizer, train_loader, model_func, lr
 
             augment_disable_flag = disable_augmentation_hook(hook_config, dataloader_iter, total_epochs, cur_epoch, cfg,
                                                              augment_disable_flag, logger)
-            # with torch.autograd.detect_anomaly():
-            # use for debugging
             accumulated_iter = train_one_epoch_kd(
                 model, model_teacher, optimizer, train_loader, model_func,
                 args=args,
@@ -606,13 +594,6 @@ def eval_epoch(model, epoch, cfg, args, output_dir, logger, dist_train, ckpt_pat
         dist=dist_train, workers=args.workers, logger=logger, training=False
     )
 
-    # Conduct the evaluation using the ckpt of the current epoch
-    # repeat_eval_ckpt(
-    #     model.module if dist_train else model,
-    #     test_loader, args, eval_output_dir, logger, ckpt_dir,
-    #     dist_test=dist_train
-    # )
-
     # Conduct the evaluation for a single checkpoint
     eval_single_ckpt(
         model, test_loader, args, eval_output_dir, logger, epoch, ckpt_path=ckpt_path
@@ -700,7 +681,7 @@ def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_r
     Returns:
         torch.Tensor: The MSE loss between the top N values of the student and teacher feature maps.
     """
-    # apply batch norm and ReLU
+    # apply activation function if specified
     if kd_act is not None:
         act_fn = nn.ReLU() if kd_act == 'relu' \
             else (nn.GELU() if kd_act == 'gelu'
