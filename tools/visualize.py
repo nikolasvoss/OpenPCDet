@@ -18,7 +18,7 @@ from pcdet.models import build_network, load_data_to_gpu
 from pcdet.utils import common_utils
 
 
-def parse_config():
+def parse_config(second_s=False):
     parser = argparse.ArgumentParser(description='arg parser')
 
     parser.add_argument('--cfg_file', type=str, default='/home/niko/Documents/sicherung_trainings/second_2_240315/cbgs_second_multihead.yaml', help='specify the config for training')
@@ -43,6 +43,13 @@ def parse_config():
     parser.add_argument('--infer_time', action='store_true', default=False, help='calculate inference latency')
 
     args = parser.parse_args()
+
+    if second_s:
+        args.cfg_file = '/home/niko/OpenPCDet/tools/cfgs/nuscenes_models/cbgs_second_S_multihead.yaml'
+        args.ckpt ='/home/niko/Documents/sicherung_trainings/second_s_1_240308/checkpoint_epoch_15.pth'
+    else:
+        args.cfg_file = '/home/niko/Documents/sicherung_trainings/second_2_240315/cbgs_second_multihead.yaml'
+        args.ckpt ='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
 
     cfg_from_yaml_file(args.cfg_file, cfg)
     cfg.TAG = Path(args.cfg_file).stem
@@ -79,15 +86,9 @@ def getTopNVoxels(input_dict, N):
 
 
 def main():
-    args, cfg = parse_config()
-
     second_s = False
-    if second_s:
-        args.cfg_file = '/home/niko/Documents/sicherung_trainings/second_s_1_240308/cbgs_second_S_multihead.yaml'
-        args.ckpt ='/home/niko/Documents/sicherung_trainings/second_s_1_240308/checkpoint_epoch_15.pth'
-    else:
-        args.cfg_file = '/home/niko/Documents/sicherung_trainings/second_2_240315/cbgs_second_multihead.yaml'
-        args.ckpt ='/home/niko/Documents/sicherung_trainings/second_2_240315/checkpoint_epoch_15.pth'
+
+    args, cfg = parse_config(second_s)
 
     if args.infer_time:
         os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
