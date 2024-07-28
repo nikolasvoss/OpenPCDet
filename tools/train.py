@@ -56,10 +56,7 @@ def parse_config():
     parser.add_argument('--logger_iter_interval', type=int, default=50, help='')
     parser.add_argument('--ckpt_save_time_interval', type=int, default=300, help='in terms of seconds')
     parser.add_argument('--wo_gpu_stat', action='store_true', help='')
-    parser.add_argument('--use_amp', default=False, action='store_true', help='use mix precision training')
-
-    parser.add_argument('--layer0_name_ae', type=str, default="backbone_3d.full_autoencoder.0", help='layer0 name for teacher')
-    parser.add_argument('--layer1_name_ae', type=str, default="backbone_3d.full_autoencoder.6", help='layer1 name for teacher')
+    parser.add_argument('--use_amp', default=True, action='store_true', help='use mix precision training')
 
     args = parser.parse_args()
 
@@ -143,13 +140,6 @@ def main():
     if args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     model.cuda()
-
-    ##################################################################
-    # create hooks for autoencoder
-    visfm.registerHookForLayer(model, args.layer0_name_ae)
-    logger.info('Created student hook for layer: %s' % args.layer0_name_ae)
-    visfm.registerHookForLayer(model, args.layer1_name_ae)
-    logger.info('Created teacher hook for layer: %s' % args.layer1_name_ae)
 
     optimizer = build_optimizer(model, cfg.OPTIMIZATION)
 
