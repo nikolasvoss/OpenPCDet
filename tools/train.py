@@ -38,7 +38,7 @@ def parse_config():
     parser.add_argument('--launcher', choices=['none', 'pytorch', 'slurm'], default='none')
     parser.add_argument('--tcp_port', type=int, default=18888, help='tcp port for distrbuted training')
     parser.add_argument('--sync_bn', action='store_true', default=False, help='whether to use sync bn')
-    parser.add_argument('--fix_random_seed', action='store_true', default=False, help='')
+    parser.add_argument('--fix_random_seed', action='store_true', default=True, help='')
     parser.add_argument('--ckpt_save_interval', type=int, default=1, help='number of training epochs')
     parser.add_argument('--local_rank', type=int, default=0, help='local rank for distributed training')
     parser.add_argument('--max_ckpt_save_num', type=int, default=30, help='max number of saved checkpoint')
@@ -365,11 +365,6 @@ def train_one_epoch_w_ae(model, optimizer, train_loader, model_func, lr_schedule
         with torch.cuda.amp.autocast(enabled=use_amp):
             loss, tb_dict, disp_dict = model_func(model, batch)
 
-        ##################################################################
-        # added to train autoencoder
-        ae_loss = torch.nn.MSELoss()
-        loss += ae_loss(visfm.feature_maps[0], visfm.feature_maps[1])
-
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
         clip_grad_norm_(model.parameters(), optim_cfg.GRAD_NORM_CLIP)
@@ -479,13 +474,6 @@ def eval_epoch(model, epoch, cfg, args, output_dir, logger, dist_train, ckpt_pat
         batch_size=args.batch_size,
         dist=dist_train, workers=args.workers, logger=logger, training=False
     )
-
-    # Conduct the evaluation using the ckpt of the current epoch
-    # repeat_eval_ckpt(
-    #     model.module if dist_train else model,
-    #     test_loader, args, eval_output_dir, logger, ckpt_dir,
-    #     dist_test=dist_train
-    # )
 
     # Conduct the evaluation for a single checkpoint
     eval_single_ckpt(
