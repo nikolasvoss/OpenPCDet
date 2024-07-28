@@ -432,9 +432,7 @@ class VoxelResBackBone8x(nn.Module):
                     spconv.SparseConv3d(
                     reduce(getattr, self.kd_layer_names[1:], self).in_channels, # reduce calls getattr recursively with the previous result
                     int(reduce(getattr, self.kd_layer_names[1:], self).in_channels / self.model_cfg.WIDTH),
-                    1, stride=1, padding=0),
-                # norm_fn(128),
-                nn.ReLU())
+                    1, stride=1, padding=0))
             self.feat_adapt_single[0].bias.requires_grad = True
             self.feat_adapt_single[0].weight.requires_grad = True
             nn.init.zeros_(self.feat_adapt_single[0].bias.data)
@@ -492,29 +490,30 @@ class VoxelResBackBone8x(nn.Module):
         x = self.conv_input(input_sp_tensor)
         x_conv1 = self.conv1(x)
         x_conv2 = self.conv2(x_conv1)
-        # save the result of self.conv3[1].conv1 in x_conv_adapt
-        # if getattr(self, 'feat_adapt_single', None):
-        #     x_conv_adapt = self.conv3[1].conv1(self.conv3[0](x_conv2))
         x_conv3 = self.conv3(x_conv2)
         x_conv4 = self.conv4(x_conv3)
-
-        # if getattr(self, 'top_percentage', None) or self.top_percentage < 1.0:
-        #     topn_indices = torch.topk(calc_fmap_entropy_sparse(x_conv4.features),
-        #                               int(x_conv4.features.shape[0] * self.top_percentage),
-        #                               dim=0,
-        #                               largest=True,
-        #                               sorted=False).indices
-        #     x_topn = spconv.SparseConvTensor(
-        #         features=x_conv4.features[topn_indices],
-        #         indices=x_conv4.indices[topn_indices],
-        #         spatial_shape=x_conv4.spatial_shape,
-        #         batch_size=x_conv4.batch_size
-        #     )
-        #     out = self.conv_out(x_topn)
-        # else:
-        #     # for detection head
-        #     # [200, 176, 5] -> [200, 176, 2]
         out = self.conv_out(x_conv4)
+
+        # Add for data filtering (random or entropy)
+        # if getattr(self, 'top_percentage', None) or self.top_percentage < 1.0:
+        #     # rand_indices = torch.randperm(out_bkup.features.shape[0])
+        #     # rand_indices = rand_indices[:int(out_bkup.features.shape[0] * self.top_percentage)]
+        #     topn_indices = torch.topk(calc_fmap_entropy_sparse(out_bkup.features, num_bins=15),
+        #         int(out_bkup.features.shape[0] * self.top_percentage),
+        #         dim=0,
+        #         largest=True,
+        #         sorted=False).indices
+        #     out = spconv.SparseConvTensor(
+        #         features=out_bkup.features[topn_indices],
+        #         indices=out_bkup.indices[topn_indices],
+        #         spatial_shape=out_bkup.spatial_shape,
+        #         batch_size=out_bkup.batch_size
+        #     )
+
+        # else:
+        #     for detection head
+        #     [200, 176, 5] -> [200, 176, 2]
+
 
         # if student, insert feature adaptation layer
         if getattr(self, 'feat_adapt_single', None):
