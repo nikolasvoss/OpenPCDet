@@ -691,7 +691,7 @@ def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_r
         fmap_teacher = act_fn(fmap_teacher)
 
     # Calculate entropy of the teacher in dense format
-    entr_teacher, _ = visfm.calc_fmap_entropy_torch(fmap_teacher, num_bins)
+    entr_teacher, _ = visfm.calc_fmap_entropy_dense(fmap_teacher, num_bins)
 
     # Calculate the number of top values to consider
     top_n = int(top_n_relative * entr_teacher[0].numel())

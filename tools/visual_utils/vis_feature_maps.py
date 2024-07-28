@@ -514,7 +514,7 @@ def calc_fmap_entropy(feature_map):
     return entropy, num_bins
 
 
-def calc_fmap_entropy_torch(feature_map, num_bins=None):
+def calc_fmap_entropy_dense(feature_map, num_bins=None):
     """
     Compute the normalized entropy of a feature map tensor.
 
