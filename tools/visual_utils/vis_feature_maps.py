@@ -302,16 +302,15 @@ def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=
     # Entropy Calculation
     ############################################################
     # feature_map should have the shape [batch_size, feature_maps, z, y, x]
-
     # 1. Sum over all z-planes
     # 2. Calculate entropy over all channels for every single spatial location ("voxel")
     fmap_entropy, num_bins = calc_fmap_entropy(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
     # fmap_entropy = sumChannelsPerPixel(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
     # num_bins = 0
     # sigmoid function to make the entropy more visible
-    x_shift = 0.7
-    multiplier = 15
-    fmap_entropy = 1 / (1 + np.exp(-multiplier * (fmap_entropy - x_shift)))
+    # x_shift = 0.6
+    # multiplier = 6
+    # fmap_entropy = 1 / (1 + np.exp(-multiplier * (fmap_entropy - x_shift)))
     fmap_entropy[fmap_entropy < 0.05] = 0
 
     ############################################################
@@ -326,7 +325,6 @@ def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=
     voxel_size[1] = (pointcloud_range[4] - pointcloud_range[1]) / feature_map.shape[-2]  # y
     voxel_size[2] = (pointcloud_range[5] - pointcloud_range[2]) / feature_map.shape[-3]  # z
     print('Voxel size: ', voxel_size)
-
 
     x = np.linspace(pointcloud_range[0], pointcloud_range[3], feature_map.shape[4], endpoint=False)
     y = np.linspace(pointcloud_range[1], pointcloud_range[4], feature_map.shape[3], endpoint=False) # added minus, because the y-axis was flipped
@@ -347,9 +345,9 @@ def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=
 
     # Create Open3d Visualizer:
     vis = o3d.visualization.Visualizer()
-    vis.create_window(window_name=f'Sample: {samples_idx}, Voxel Size: {voxel_size}, Entropy: x_shift={x_shift}, multiplier={multiplier}, num_bins={num_bins}')
+    vis.create_window(window_name=f'Sample: {samples_idx}, Voxel Size: {voxel_size}, num_bins={num_bins}')
     vis.get_render_option().point_size = 2.5
-    vis.get_render_option().background_color = [0, 0, 0]
+    vis.get_render_option().background_color = [1,1,1]
 
     # plot the sample pc
     # input_point_cloud = o3d.geometry.PointCloud()
@@ -367,11 +365,13 @@ def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=
     vis.add_geometry(voxel_grid)
 
     vis.get_view_control().set_zoom(0.3)
+    # change field of view
+    vis.get_view_control().change_field_of_view(step=-90)
     vis.run()
     # save the entropy image. add x_shift, multiplier and num_bins to the filename
     if output_dir is not None:
-        print("Saving image...")
-        vis.capture_screen_image(f'{output_dir}/entropy_sample{samples_idx}_xshift{x_shift}_multiplier{multiplier}_numbins{num_bins}.png')
+        print(f"Saving image to {output_dir}entropy_sample{samples_idx}_numbins{num_bins}.png")
+        vis.capture_screen_image(f'{output_dir}entropy_sample{samples_idx}_numbins{num_bins}.png')
 
     vis.destroy_window()
 
