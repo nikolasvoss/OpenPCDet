@@ -36,8 +36,12 @@ def multi_classes_nms(cls_scores, box_preds, nms_config, score_thresh=None):
     Returns:
 
     """
+    # Initialize lists to store the scores, labels, and boxes of selected detections
     pred_scores, pred_labels, pred_boxes = [], [], []
+
+    # Iterate over each class to apply NMS individually
     for k in range(cls_scores.shape[1]):
+        # Apply score threshold if specified, cur_box_preds contains the boxes that meet the score threshold, and box_scores their respective scores
         if score_thresh is not None:
             scores_mask = (cls_scores[:, k] >= score_thresh)
             box_scores = cls_scores[scores_mask, k]
@@ -47,22 +51,28 @@ def multi_classes_nms(cls_scores, box_preds, nms_config, score_thresh=None):
             cur_box_preds = box_preds
 
         selected = []
+        # Proceed if there are detections that meet the score threshold
         if box_scores.shape[0] > 0:
+            # Select top-k scores and corresponding boxes for NMS, box_scores_nms and boxes_for_nms are sorted by score
             box_scores_nms, indices = torch.topk(box_scores, k=min(nms_config.NMS_PRE_MAXSIZE, box_scores.shape[0]))
             boxes_for_nms = cur_box_preds[indices]
+            # Apply NMS and get indices of selected boxes
             keep_idx, selected_scores = getattr(iou3d_nms_utils, nms_config.NMS_TYPE)(
                     boxes_for_nms[:, 0:7], box_scores_nms, nms_config.NMS_THRESH, **nms_config
             )
             selected = indices[keep_idx[:nms_config.NMS_POST_MAXSIZE]]
 
+        # Store scores, labels, and boxes of selected detections
         pred_scores.append(box_scores[selected])
         pred_labels.append(box_scores.new_ones(len(selected)).long() * k)
         pred_boxes.append(cur_box_preds[selected])
 
+    # Concatenate lists to form tensors of scores, labels, and boxes
     pred_scores = torch.cat(pred_scores, dim=0)
     pred_labels = torch.cat(pred_labels, dim=0)
     pred_boxes = torch.cat(pred_boxes, dim=0)
 
+    # Return the scores, labels, and boxes of detections after NMS
     return pred_scores, pred_labels, pred_boxes
 
 
