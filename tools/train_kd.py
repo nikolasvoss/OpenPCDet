@@ -68,7 +68,7 @@ def parse_config():
 
     # add arguments for kd loss and entropy loss
     parser.add_argument('--kd_loss_func', type=str, default='entropyRelN',
-                        help='kd loss function. Options: basic, entropy, entropyRelN, entropyRelNDense')
+                        help='kd loss function. Options: fullFmap, entropyRelN, entropyRelNDense')
     parser.add_argument('--kd_loss_weight', type=float, default=1.0, help='weight for kd loss')
     parser.add_argument('--gt_loss_weight', type=float, default=1.0, help='weight for gt loss')
     parser.add_argument('--num_bins', type=int, default=None, help='number of bins for entropy histogram')
@@ -456,7 +456,7 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
             kd_loss = loss_fmap_entr_reln_dense(visfm.feature_maps[1], visfm.feature_maps[0],
                                                 args.num_bins, top_n_relative=args.top_n_relative,
                                                  kd_act=args.kd_act)
-        elif args.kd_loss_func == 'basic':
+        elif args.kd_loss_func == 'fullFmap':
             if len(visfm.feature_maps) == 2:
                 kd_loss = loss_fmap_kd(visfm.feature_maps[1], visfm.feature_maps[0], kd_act=args.kd_act)
             elif len(visfm.feature_maps) == 4:
@@ -469,15 +469,15 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
             else:
                 raise ValueError("Invalid number of feature maps. Must be 2, 4 or 6")
         else:
-            raise ValueError("Invalid kd_loss_func argument. Must be 'entropy' or 'basic'")
+            raise ValueError("Invalid kd_loss_func argument. Must be 'entropy' or 'fullFmap'")
 
         # Delete the feature maps to prevent errors in backward pass, also frees up memory
         visfm.feature_maps = None
+        end_time = time.time()  # end time after kd_loss calculation
+        kd_loss_time = end_time - start_time  # time taken to calculate kd_loss
 
         loss = args.gt_loss_weight * gt_loss + args.kd_loss_weight * kd_loss
 
-        end_time = time.time()  # end time after kd_loss calculation
-        kd_loss_time = end_time - start_time  # time taken to calculate kd_loss
         if args.v:  # verbose logging
             logger.info(f"Time for kd_loss calc: {kd_loss_time:.6f}s, "
                   f"weighted GT-Loss: {args.gt_loss_weight*gt_loss:.4f}, "
