@@ -57,7 +57,7 @@ def printAllModelLayers(model):
         print(name)
 
 
-def vis_fmap_2d(feature_map, output_dir, batch_idx=0, fmap_indices=None, z_plane_indices=None, no_negative_values=False):
+def vis_fmap_2d(feature_map, output_dir, batch_idx=0, fmap_indices=None, z_plane_indices=None, no_negative_values=False, layer_name="", visibility_factor=1.4):
     """Visualizes feature maps as slices in the z-plane using matplotlib.
     The plots are saved as images in the specified output directory.
 
@@ -126,24 +126,28 @@ def vis_fmap_2d(feature_map, output_dir, batch_idx=0, fmap_indices=None, z_plane
         if not (0 <= idx < num_z_planes):
             raise ValueError(f"z_plane_idx {idx} is out of bounds. It must be between 0 and {num_z_planes - 1}")
 
-    visibility_factor = 2  # multiply all values for better visibility
-
     # Visualization loop
     for fmap_idx in fmap_indices:
         for z_plane in z_plane_indices:
             # Extract the specific slice to visualize
             # squeeze(0) removes the z-dimension if it is 1
             feature_slice = feature_map[batch_idx, fmap_idx, z_plane].squeeze(0).cpu().numpy()
-
+            # flip y axis
+            feature_slice = np.flipud(feature_slice)
             plt.title(f'Batch {batch_idx[0]}, Feature Map {fmap_idx}, Z-Plane {z_plane}')
             plt.figure(figsize=(8, 8))  # Set the figure size to be 8x8 inches
             if no_negative_values:
+                feature_slice = feature_slice[:, :] - feature_slice[15, 15] # hack to set empty space to 0
                 plt.imshow(abs(feature_slice*visibility_factor), cmap='copper', vmin=0, vmax=abs(feature_slice).max())
             else:
-                plt.imshow(feature_slice*visibility_factor, cmap='PRGn')#, vmin=0)#, vmax=5)
-            plt.colorbar()
+                limit = np.min([abs(feature_slice.min()), abs(feature_slice.max())])
+                plt.imshow(feature_slice*visibility_factor, cmap='PRGn', vmin=-limit, vmax=limit)
+            plt.colorbar(fraction=0.0453)
+            # add title
+            plt.title(f'Layer: {layer_name}')
             file_name = os.path.join(output_dir, (f'map_batch{batch_idx[0]}_fmap{fmap_idx}_z{z_plane}.jpg'))
-            plt.savefig(os.path.join(output_dir, file_name), dpi=150) # > 1024x1024 pixels (8 inches * 128 DPI)
+            print(f"Saving image to {file_name}")
+            plt.savefig(os.path.join(output_dir, file_name), dpi=500) # > 1024x1024 pixels (8 inches * 128 DPI)
             plt.close()
 
 
