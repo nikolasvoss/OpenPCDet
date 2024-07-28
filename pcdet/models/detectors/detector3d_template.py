@@ -177,6 +177,9 @@ class Detector3DTemplate(nn.Module):
 
     def post_processing(self, batch_dict):
         """
+        Post-processes the output of the detection model to generate final predictions.
+        This includes applying Non-Maximum Suppression (NMS) and formatting the predictions.
+
         Args:
             batch_dict:
                 batch_size:
@@ -190,13 +193,18 @@ class Detector3DTemplate(nn.Module):
                 roi_labels: (B, num_rois)  1 .. num_classes
                 batch_pred_labels: (B, num_boxes, 1)
         Returns:
-
+            A tuple containing the prediction dictionaries for each item in the batch and a recall dictionary
+            for evaluation purposes.
         """
+        # Retrieve post-processing configuration from the model configuration
         post_process_cfg = self.model_cfg.POST_PROCESSING
         batch_size = batch_dict['batch_size']
         recall_dict = {}
         pred_dicts = []
+
+        # Process predictions for each item in the batch
         for index in range(batch_size):
+            # If batch_index is provided, filter predictions for the current batch item
             if batch_dict.get('batch_index', None) is not None:
                 assert batch_dict['batch_box_preds'].shape.__len__() == 2
                 batch_mask = (batch_dict['batch_index'] == index)
@@ -206,13 +214,12 @@ class Detector3DTemplate(nn.Module):
 
             box_preds = batch_dict['batch_box_preds'][batch_mask]
             src_box_preds = box_preds
-            
+
+            # Process class predictions, apply sigmoid if not normalized
             if not isinstance(batch_dict['batch_cls_preds'], list):
                 cls_preds = batch_dict['batch_cls_preds'][batch_mask]
-
                 src_cls_preds = cls_preds
                 assert cls_preds.shape[1] in [1, self.num_class]
-
                 if not batch_dict['cls_preds_normalized']:
                     cls_preds = torch.sigmoid(cls_preds)
             else:
@@ -221,7 +228,9 @@ class Detector3DTemplate(nn.Module):
                 if not batch_dict['cls_preds_normalized']:
                     cls_preds = [torch.sigmoid(x) for x in cls_preds]
 
+            # Apply NMS and format final predictions based on the NMS configuration
             if post_process_cfg.NMS_CONFIG.MULTI_CLASSES_NMS:
+                # Handle multi-class NMS
                 if not isinstance(cls_preds, list):
                     cls_preds = [cls_preds]
                     multihead_label_mapping = [torch.arange(1, self.num_class, device=cls_preds[0].device)]
@@ -230,6 +239,7 @@ class Detector3DTemplate(nn.Module):
 
                 cur_start_idx = 0
                 pred_scores, pred_labels, pred_boxes = [], [], []
+                # Apply NMS for each head
                 for cur_cls_preds, cur_label_mapping in zip(cls_preds, multihead_label_mapping):
                     assert cur_cls_preds.shape[1] == len(cur_label_mapping)
                     cur_box_preds = box_preds[cur_start_idx: cur_start_idx + cur_cls_preds.shape[0]]
@@ -248,12 +258,13 @@ class Detector3DTemplate(nn.Module):
                 final_labels = torch.cat(pred_labels, dim=0)
                 final_boxes = torch.cat(pred_boxes, dim=0)
             else:
+                # Handle class-agnostic NMS
                 cls_preds, label_preds = torch.max(cls_preds, dim=-1)
                 if batch_dict.get('has_class_labels', False):
                     label_key = 'roi_labels' if 'roi_labels' in batch_dict else 'batch_pred_labels'
                     label_preds = batch_dict[label_key][index]
                 else:
-                    label_preds = label_preds + 1 
+                    label_preds = label_preds + 1
                 selected, selected_scores = model_nms_utils.class_agnostic_nms(
                     box_scores=cls_preds, box_preds=box_preds,
                     nms_config=post_process_cfg.NMS_CONFIG,
