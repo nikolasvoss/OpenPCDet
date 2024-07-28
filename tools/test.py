@@ -213,6 +213,18 @@ def main():
         else:
             eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=dist_test)
 
+    # top_percentage = [0.9, 0.8, 0.7, 0.6,0.5, 0.4, 0.3,0.2, 0.1,0.05]
+    # top_percentage = [0.01]
+    # for i in top_percentage:
+    #     print(f"Top percentage: {i}")
+    #     cfg.MODEL.BACKBONE_3D.TOP_PERCENTAGE = i
+    #     model = build_network(model_cfg=cfg.MODEL, num_class=len(cfg.CLASS_NAMES), dataset=test_set)
+    #     with torch.no_grad():
+    #         if args.eval_all:
+    #             repeat_eval_ckpt(model, test_loader, args, eval_output_dir, logger, ckpt_dir, dist_test=dist_test)
+    #         else:
+    #             eval_single_ckpt(model, test_loader, args, eval_output_dir, logger, epoch_id, dist_test=dist_test)
+
 
 if __name__ == '__main__':
     main()
