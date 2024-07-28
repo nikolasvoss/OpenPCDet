@@ -151,7 +151,7 @@ def vis_fmap_2d(feature_map, output_dir, batch_idx=0, fmap_indices=None, z_plane
             plt.close()
 
 
-def vis_fmap_3d(feature_map, output_dir, batch_idx=0, fmap_indices=None, input_points=None, same_plot=False, gt_boxes=None, pred_boxes=None):
+def vis_fmap_3d(feature_map, output_dir, samples_idx, batch_idx=0, fmap_indices=None, input_points=None, same_plot=False, gt_boxes=None, pred_boxes=None):
     """Visualizes 3D feature maps using Open3D.
 
     Args:
@@ -167,7 +167,6 @@ def vis_fmap_3d(feature_map, output_dir, batch_idx=0, fmap_indices=None, input_p
         raise ValueError("No feature map available. Check if the hook was triggered correctly.")
     if not os.path.exists(output_dir):
         raise FileNotFoundError(f"Output directory `{output_dir}` does not exist.")
-
     # check file types
     if not isSingleIntOrListOfInts(batch_idx):
         raise ValueError("batch_idx must be an integer or a list of integers.")
@@ -188,7 +187,6 @@ def vis_fmap_3d(feature_map, output_dir, batch_idx=0, fmap_indices=None, input_p
         batch_idx = [batch_idx]
     if isinstance(fmap_indices, int):
         fmap_indices = [fmap_indices]
-
     # If no feature map indices are provided, visualize all feature maps
     if fmap_indices is None:
         fmap_indices = list(range(num_feature_maps))
@@ -196,86 +194,91 @@ def vis_fmap_3d(feature_map, output_dir, batch_idx=0, fmap_indices=None, input_p
     for idx in fmap_indices:
         if not (0 <= idx < num_feature_maps):
             raise ValueError(f"fmap_indices {idx} is out of bounds. It must be between 0 and {num_feature_maps - 1}")
-
     for idx in batch_idx:
         if not (0 <= idx < feature_map.size(0)):
             raise ValueError(f"batch_idx {idx} is out of bounds. It must be between 0 and {feature_map.size(0) - 1}")
-
     if input_points is not None:
         input_points = input_points[:, 1:4]  # Only use the xyz coordinates
 
-    for fmap_idx in fmap_indices:
-        # one plot for each feature map
+    for z_idx in range(1):
+        for fmap_idx in fmap_indices:
+            z_idx=5
+            # one plot for each feature map
 
-        # squeeze removes leftover dimensions if they are 1
-        single_feature_map = feature_map[batch_idx, fmap_idx].squeeze(0) # values[z,y,x] / [1,y,x], remove features dimension
+            # squeeze removes leftover dimensions if they are 1
+            single_feature_map = feature_map[batch_idx, fmap_idx, z_idx].squeeze().unsqueeze(0) # values[z,y,x] / [1,y,x], remove features dimension
+            z, y, x = torch.nonzero(single_feature_map, as_tuple=True)
+            # scale values for colors
+            nonzero_values = single_feature_map[z.cpu(), y.cpu(), x.cpu()]
 
-        z, y, x = torch.nonzero(single_feature_map, as_tuple=True)
-        # scale values for colors
-        nonzero_values = single_feature_map[z.cpu(), y.cpu(), x.cpu()]
+            # create a nparray of size 3 x N with nonzero_values in the first row, the rest is 0
+            colors = np.zeros((3, len(nonzero_values)))
+            colors[0] = nonzero_values.cpu().numpy()
+            colors = colors.astype(np.float64)  # Convert to float64, as Open3D expects
 
-        # create a nparray of size 3 x N with nonzero_values in the first row, the rest is 0
-        colors = np.zeros((3, len(nonzero_values)))
-        colors[0] = nonzero_values.cpu().numpy()
-        colors = colors.astype(np.float64)  # Convert to float64, as Open3D expects
+            # Point cloud range from nuscenes.yaml
+            pointcloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
+            # original voxel size from nuscenes.yaml
+            voxel_size = [0.1, 0.1, 0.2]
+            # voxel size fitted to current feature map
+            voxel_size[0] = (pointcloud_range[3] - pointcloud_range[0]) / single_feature_map.shape[2] # x
+            voxel_size[1] = (pointcloud_range[4] - pointcloud_range[1]) / single_feature_map.shape[1] # y
+            voxel_size[2] = (pointcloud_range[5] - pointcloud_range[2]) / single_feature_map.shape[0] # z
+            del single_feature_map
 
-        # Point cloud range from nuscenes.yaml
-        pointcloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
-        # original voxel size from nuscenes.yaml
-        voxel_size = [0.1, 0.1, 0.2]
-        # voxel size fitted to current feature map
-        voxel_size[0] = (pointcloud_range[3] - pointcloud_range[0]) / single_feature_map.shape[2] # x
-        voxel_size[1] = (pointcloud_range[4] - pointcloud_range[1]) / single_feature_map.shape[1] # y
-        voxel_size[2] = (pointcloud_range[5] - pointcloud_range[2]) / single_feature_map.shape[0] # z
+            x_meters = x.cpu().numpy() * voxel_size[0] - 51.2  # voxel size and pc range
+            y_meters = y.cpu().numpy() * voxel_size[1] - 51.2
+            z_meters = z.cpu().numpy() * voxel_size[2] - 4.9
 
-        x_meters = x.cpu().numpy() * voxel_size[0] - 51.2  # voxel size and pc range
-        y_meters = y.cpu().numpy() * voxel_size[1] - 51.2
-        z_meters = z.cpu().numpy() * voxel_size[2] - 4.9
+            points = o3d.utility.Vector3dVector(np.vstack((x_meters, y_meters, z_meters)).T)
+            colors = o3d.utility.Vector3dVector(colors.T)
+            feature_pcd = o3d.geometry.PointCloud()
+            feature_pcd.points = points
+            feature_pcd.colors = colors
 
-        points = o3d.utility.Vector3dVector(np.vstack((x_meters, y_meters, z_meters)).T)
-        colors = o3d.utility.Vector3dVector(colors.T)
+            # WARNING: the voxels z-dimension is currently not correct
+            voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(feature_pcd, voxel_size=voxel_size[0])
 
-        feature_pcd = o3d.geometry.PointCloud()
-        feature_pcd.points = points
-        feature_pcd.colors = colors
+            # Create Open3d Visualizer:
+            vis = o3d.visualization.Visualizer()
+            vis.create_window(window_name=f'Voxel Size: {voxel_size}')
+            vis.get_render_option().point_size = 2.5
+            vis.get_render_option().background_color = [0.5,0.5,0.5]
 
-        # WARNING: the voxels z-dimension is currently not correct
-        voxel_grid = o3d.geometry.VoxelGrid.create_from_point_cloud(feature_pcd, voxel_size=voxel_size[0])
+            # Input Points Visualization
+            if input_points is not None and same_plot:
+                input_point_cloud = o3d.geometry.PointCloud()
+                input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
+                input_point_cloud.paint_uniform_color([0, 0.8, 0])  # green
+                vis.add_geometry(input_point_cloud)
+                vis.add_geometry(voxel_grid)
 
-        # Create Open3d Visualizer:
-        vis = o3d.visualization.Visualizer()
-        vis.create_window(window_name=f'Voxel Size: {voxel_size}')
+                if pred_boxes is not None:
+                    vis, box3d_list = drawPredBoxes(vis, pred_boxes)
+                if gt_boxes is not None:
+                    gt_angles = gt_boxes[:, 6:8].reshape((-1, 2))
+                    vis, box3d_list = drawGtBoxes(vis, gt_boxes)
+            elif input_points is not None and not same_plot:
+                vis.add_geometry(voxel_grid)
 
-        vis.get_render_option().point_size = 2.5
-        vis.get_render_option().background_color = [0.25, 0.25, 0.25]#[0, 0, 0]
+                input_point_cloud = o3d.geometry.PointCloud()
+                input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
+                input_point_cloud.paint_uniform_color([0, 1, 0])  # green
+                vis.create_window()
+                vis.add_geometry(input_point_cloud)
+            else:  # no input points were passed
+                vis.add_geometry(voxel_grid)
+            vis.get_view_control().set_zoom(0.3)
+            # change field of view
+            vis.get_view_control().change_field_of_view(step=-90)
+            vis.run()
+            # save the entropy image.
+            if output_dir is not None:
+                print(f"Saving image to {output_dir}fmap_sample{samples_idx}_channel{fmap_idx}_z{z_idx}.png")
+                vis.capture_screen_image(
+                    f'{output_dir}fmap_sample{samples_idx}_channel{fmap_idx}_z{z_idx}.png')
 
-        # Input Points Visualization
-        if input_points is not None and same_plot:
-            input_point_cloud = o3d.geometry.PointCloud()
-            input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
-            input_point_cloud.paint_uniform_color([0, 1, 0])  # green
-            vis.add_geometry(input_point_cloud)
-            vis.add_geometry(voxel_grid)
-
-            #test
-            if pred_boxes is not None:
-                vis, box3d_list = drawPredBoxes(vis, pred_boxes)
-            if gt_boxes is not None:
-                gt_angles = gt_boxes[:, 6:8].reshape((-1, 2))
-                vis, box3d_list = drawGtBoxes(vis, gt_boxes)
-        elif input_points is not None and not same_plot:
-            vis.add_geometry(voxel_grid)
-
-            input_point_cloud = o3d.geometry.PointCloud()
-            input_point_cloud.points = o3d.utility.Vector3dVector(input_points.detach().cpu().numpy().astype(np.float64))
-            input_point_cloud.paint_uniform_color([0, 1, 0])  # green
-            vis.create_window()
-            vis.add_geometry(input_point_cloud)
-        else:  # no input points were passed
-            vis.add_geometry(voxel_grid)
-        vis.get_view_control().set_zoom(0.3)
-        vis.run()
-        vis.destroy_window()
+            vis.destroy_window()
 
 
 def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=None, pred_boxes=None, gt_boxes=None):
