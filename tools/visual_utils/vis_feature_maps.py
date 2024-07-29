@@ -365,82 +365,6 @@ def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=
     vis.destroy_window()
 
 
-def drawPredBoxes(vis, pred_boxes):
-    vis, box3d_list = draw_box(vis, pred_boxes.cpu(), (1, 1, 0))
-    print('Number of Pred-Boxes: ', pred_boxes.shape[0])
-    return vis, box3d_list
-
-
-def drawGtBoxes(vis, gt_boxes):
-    for i in range(gt_boxes.shape[0]):
-        gt_box = gt_boxes[i, :].reshape((1, 9))
-        vis, box3d_list = draw_box(vis, gt_box.cpu(), (0, 1, 1))
-    print('Number of GT-Boxes: ', gt_boxes.shape[0])
-    return vis, box3d_list
-    
-    
-def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None):
-    box_colormap = [
-        [1, 1, 1],
-        [0, 1, 0],
-        [0, 1, 1],
-        [1, 1, 0],
-    ]
-    box3d_list = []
-
-    for i in range(gt_boxes.shape[0]):
-        line_set, box3d = translate_boxes_to_open3d_instance(gt_boxes[i])
-        if ref_labels is None:
-            line_set.paint_uniform_color(color)
-        else:
-            line_set.paint_uniform_color(box_colormap[ref_labels[i]])
-
-        vis.add_geometry(line_set)
-        box3d_list.append(box3d)
-
-    return vis, box3d_list
-
-
-def translate_boxes_to_open3d_instance(gt_boxes):
-    """
-             4-------- 6
-           /|         /|
-          5 -------- 3 .
-          | |        | |
-          . 7 -------- 1
-          |/         |/
-          2 -------- 0
-    """
-    center = gt_boxes[0:3]
-    lwh = gt_boxes[3:6]
-    axis_angles = np.array([0, 0, gt_boxes[6] + 1e-10])
-    rot = o3d.geometry.get_rotation_matrix_from_axis_angle(axis_angles)
-    print('rot: ', rot)
-    box3d = o3d.geometry.OrientedBoundingBox(center, rot, lwh)
-
-    line_set = o3d.geometry.LineSet.create_from_oriented_bounding_box(box3d)
-
-    # import ipdb; ipdb.set_trace(context=20)
-    lines = np.asarray(line_set.lines)
-    lines = np.concatenate([lines, np.array([[1, 4], [7, 6]])], axis=0)
-
-    line_set.lines = o3d.utility.Vector2iVector(lines)
-
-    return line_set, box3d
-
-
-def isSingleIntOrListOfInts(value):
-    # First, check if the value is a single integer
-    if isinstance(value, int):
-        return True
-    # Then, check if it is a list
-    elif isinstance(value, list):
-        # Check if all elements in the list are integers
-        return all(isinstance(item, int) for item in value)
-    # If it's neither an integer nor a list of integers, return False
-    return False
-
-
 def calc_fmap_entropy(feature_map, num_bins=None):
     """
         Compute the normalized entropy of a feature map tensor.
@@ -498,6 +422,7 @@ def calc_fmap_entropy(feature_map, num_bins=None):
     return entropy, num_bins
 
 
+# not used for thesis, not sure if it works
 def calc_fmap_entropy_dense(feature_map, num_bins=None):
     """
     Compute the normalized entropy of a feature map tensor.
@@ -609,6 +534,109 @@ def calc_fmap_entropy_sparse(feature_map, num_bins=None):
     return entropy
 
 
+@jit(nopython=True)
+def computeHistograms(feature_map, bin_edges, num_bins):
+    # Iterate over all voxels and compute the histogram for each. Use for visualization.
+    h, w = feature_map.shape[1], feature_map.shape[2]
+    histograms = np.zeros((num_bins, h, w), dtype=np.uint32)
+    for i in range(h):
+        for j in range(w):
+            histograms[:, i, j], _ = np.histogram(feature_map[:, i, j], bins=bin_edges)
+    return histograms
+
+
+def computeHistogramsTorch(feature_map, bin_edges, num_bins):
+    # find all values that are in the bins bin_edges[n] <= x < bin_edges[n+1] and count them.
+    # expects: feature_map of shape [batch, channels, y, x]
+    batch, h, w = feature_map.shape[0], feature_map.shape[-2], feature_map.shape[-1]
+    histograms = torch.zeros((batch, num_bins, h, w), dtype=torch.int32, device=feature_map.device)
+    for bat in range(feature_map.shape[0]):
+        for bin in range(num_bins):
+            histograms[bat, bin] = torch.sum(
+                (feature_map[bat] >= bin_edges[bin]) &
+                (feature_map[bat] < bin_edges[bin+1]),
+                dim=0)
+        # Handle the last bin inclusive of the upper edge
+        histograms[-1] = (feature_map[bat] >= bin_edges[-2]).sum(dim=0)
+    return histograms
+
+
+def drawPredBoxes(vis, pred_boxes):
+    vis, box3d_list = draw_box(vis, pred_boxes.cpu(), (1, 1, 0))
+    print('Number of Pred-Boxes: ', pred_boxes.shape[0])
+    return vis, box3d_list
+
+
+def drawGtBoxes(vis, gt_boxes):
+    for i in range(gt_boxes.shape[0]):
+        gt_box = gt_boxes[i, :].reshape((1, 9))
+        vis, box3d_list = draw_box(vis, gt_box.cpu(), (0, 1, 1))
+    print('Number of GT-Boxes: ', gt_boxes.shape[0])
+    return vis, box3d_list
+    
+    
+def draw_box(vis, gt_boxes, color=(0, 1, 0), ref_labels=None, score=None):
+    box_colormap = [
+        [1, 1, 1],
+        [0, 1, 0],
+        [0, 1, 1],
+        [1, 1, 0],
+    ]
+    box3d_list = []
+
+    for i in range(gt_boxes.shape[0]):
+        line_set, box3d = translate_boxes_to_open3d_instance(gt_boxes[i])
+        if ref_labels is None:
+            line_set.paint_uniform_color(color)
+        else:
+            line_set.paint_uniform_color(box_colormap[ref_labels[i]])
+
+        vis.add_geometry(line_set)
+        box3d_list.append(box3d)
+
+    return vis, box3d_list
+
+
+def translate_boxes_to_open3d_instance(gt_boxes):
+    """
+             4-------- 6
+           /|         /|
+          5 -------- 3 .
+          | |        | |
+          . 7 -------- 1
+          |/         |/
+          2 -------- 0
+    """
+    center = gt_boxes[0:3]
+    lwh = gt_boxes[3:6]
+    axis_angles = np.array([0, 0, gt_boxes[6] + 1e-10])
+    rot = o3d.geometry.get_rotation_matrix_from_axis_angle(axis_angles)
+    print('rot: ', rot)
+    box3d = o3d.geometry.OrientedBoundingBox(center, rot, lwh)
+
+    line_set = o3d.geometry.LineSet.create_from_oriented_bounding_box(box3d)
+
+    # import ipdb; ipdb.set_trace(context=20)
+    lines = np.asarray(line_set.lines)
+    lines = np.concatenate([lines, np.array([[1, 4], [7, 6]])], axis=0)
+
+    line_set.lines = o3d.utility.Vector2iVector(lines)
+
+    return line_set, box3d
+
+
+def isSingleIntOrListOfInts(value):
+    # First, check if the value is a single integer
+    if isinstance(value, int):
+        return True
+    # Then, check if it is a list
+    elif isinstance(value, list):
+        # Check if all elements in the list are integers
+        return all(isinstance(item, int) for item in value)
+    # If it's neither an integer nor a list of integers, return False
+    return False
+
+
 def sumChannelsPerPixel(feature_map):
     """
     Sum the feature maps over all channels for each pixel.
@@ -660,32 +688,6 @@ def npVectorToO3dPoints(x:np.array, y:np.array=None, z:np.array=None):
     xyz[:, 2] = mesh_z.flatten()
 
     return o3d.utility.Vector3dVector(xyz)
-
-
-@jit(nopython=True)
-def computeHistograms(feature_map, bin_edges, num_bins):
-    h, w = feature_map.shape[1], feature_map.shape[2]
-    histograms = np.zeros((num_bins, h, w), dtype=np.uint32)
-    for i in range(h):
-        for j in range(w):
-            histograms[:, i, j], _ = np.histogram(feature_map[:, i, j], bins=bin_edges)
-    return histograms
-
-
-def computeHistogramsTorch(feature_map, bin_edges, num_bins):
-    # find all values that are in the bins bin_edges[n] <= x < bin_edges[n+1] and count them.
-    # expects: feature_map of shape [batch, channels, y, x]
-    batch, h, w = feature_map.shape[0], feature_map.shape[-2], feature_map.shape[-1]
-    histograms = torch.zeros((batch, num_bins, h, w), dtype=torch.int32, device=feature_map.device)
-    for bat in range(feature_map.shape[0]):
-        for bin in range(num_bins):
-            histograms[bat, bin] = torch.sum(
-                (feature_map[bat] >= bin_edges[bin]) &
-                (feature_map[bat] < bin_edges[bin+1]),
-                dim=0)
-        # Handle the last bin inclusive of the upper edge
-        histograms[-1] = (feature_map[bat] >= bin_edges[-2]).sum(dim=0)
-    return histograms
 
 
 def plotHistAndBoxplot(fmap_entropy, bins=100):
