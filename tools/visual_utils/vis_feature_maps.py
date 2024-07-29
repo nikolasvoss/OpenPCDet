@@ -452,7 +452,7 @@ def isSingleIntOrListOfInts(value):
     return False
 
 
-def calc_fmap_entropy(feature_map):
+def calc_fmap_entropy(feature_map, num_bins=None):
     """
         Compute the normalized entropy of a feature map tensor.
 
@@ -481,36 +481,31 @@ def calc_fmap_entropy(feature_map):
         """
 
     # Expects a feature map tensor of shape [feature_maps, y, x]
-    # Abort if the feature map is empty
+    # Abort if the feature map is empty , return shape is [y, x]
     if feature_map.max() == 0 and feature_map.min() == 0:
-        return np.zeros(feature_map.shape[1:]), 0
-    feature_map_no_zeroes = feature_map[feature_map!=0]
-    # Cut outliers and normalize
-    lower_limit = np.percentile(feature_map_no_zeroes, 0.01)
-    upper_limit = np.percentile(feature_map_no_zeroes, 99.99)
-    del feature_map_no_zeroes
-    # set all values below or above limits to limits
+        return np.zeros([feature_map.shape[-2], feature_map.shape[-1]], device=feature_map.device), 0
+    lower_limit = np.percentile(feature_map[feature_map != 0], 0.01)
+    upper_limit = np.percentile(feature_map[feature_map != 0], 99.99)
+    # Remove outliers to get better histogram
     feature_map[feature_map < lower_limit] = lower_limit
     feature_map[feature_map > upper_limit] = upper_limit
-    # normalize
+    # Normalize for visualization
     feature_map -= lower_limit
-    feature_map = feature_map * 1 / (upper_limit-lower_limit) # set maximum value to 1
+    feature_map = feature_map * 1 / (upper_limit-lower_limit)
 
-    # num_bins, fewer often work better
-    num_bins = max(3, feature_map.shape[0] // 20)
-    print('num_bins: ', num_bins)
+    # Number of bins , fewer often work better for visualization
+    if num_bins is None:
+        num_bins = max(3, feature_map.shape[0] // 20) # Arbitrary value for visualization
+    else:
+        assert isinstance(num_bins, int), "num_bins must be an integer."
+        assert num_bins > 0, "num_bins must be greater than 0."
+    # Create histograms
     bin_edges = np.linspace(0, 1, num_bins + 1)
     histograms = computeHistograms(feature_map, bin_edges, num_bins)
-    probabilities = histograms / histograms.sum(axis=0, keepdims=True)
-
-    # Make sure we don't have any zeros in probabilities by adding a small constant.
-    e = 1e-10
-    probabilities += e
-
-    entropy = -np.sum(probabilities * np.log(probabilities), axis=0)
-    # normalize
-    entropy -= entropy.min()
-    entropy /= entropy.max()
+    # Add small constants to avoid probabilities = 0 and division by zero.
+    rel_frequency = (histograms / (histograms.sum(axis=0, keepdims=True) + 1e-10)).clip(min=1e-10)
+    # Calculate entropy over channel dimension
+    entropy = -np.sum(rel_frequency * np.log(rel_frequency), axis=0)
     return entropy, num_bins
 
 
