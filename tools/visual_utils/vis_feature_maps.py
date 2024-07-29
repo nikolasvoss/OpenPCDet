@@ -553,10 +553,6 @@ def calc_fmap_entropy_dense(feature_map, num_bins=None):
 
     entropy = -torch.sum(probabilities * torch.log(probabilities), dim=1)
 
-    # normalize
-    entropy -= entropy.min()
-    entropy = torch.div(entropy, entropy.max())
-
     return entropy, num_bins
 
 
@@ -610,9 +606,7 @@ def calc_fmap_entropy_sparse(feature_map, num_bins=None):
 
     entropy = -torch.sum(probabilities * torch.log(probabilities), dim=1)
 
-    # normalize
-    entropy -= entropy.min()
-    return torch.div(entropy, entropy.max())
+    return entropy
 
 
 def sumChannelsPerPixel(feature_map):
