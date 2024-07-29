@@ -281,7 +281,7 @@ def vis_fmap_3d(feature_map, output_dir, samples_idx, batch_idx=0, fmap_indices=
             vis.destroy_window()
 
 
-def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=None, pred_boxes=None, gt_boxes=None):
+def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=None, pred_boxes=None, gt_boxes=None, z_plane_idx=0):
     if feature_map is None:
         raise ValueError("No feature map available. Check if the hook was triggered correctly.")
     if output_dir is not None and not os.path.exists(output_dir):
@@ -295,22 +295,11 @@ def vis_fmap_entropy_3d(feature_map, samples_idx, output_dir=None, input_points=
     if feature_map.ndim == 4:
         print('2D feature map detected')
         feature_map = feature_map.unsqueeze(2) # Add a dummy z-dimension for compatibility
-    feature_map = feature_map.cpu().numpy()
-
-    # plotZScore(torch.sum(feature_map, axis=2, keepdims=False).squeeze(0))
-    ############################################################
-    # Entropy Calculation
-    ############################################################
     # feature_map should have the shape [batch_size, feature_maps, z, y, x]
-    # 1. Sum over all z-planes
-    # 2. Calculate entropy over all channels for every single spatial location ("voxel")
-    fmap_entropy, num_bins = calc_fmap_entropy(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
-    # fmap_entropy = sumChannelsPerPixel(np.sum(feature_map, axis=2, keepdims=False).squeeze(0))
-    # num_bins = 0
-    # sigmoid function to make the entropy more visible
-    # x_shift = 0.6
-    # multiplier = 6
-    # fmap_entropy = 1 / (1 + np.exp(-multiplier * (fmap_entropy - x_shift)))
+    # Calculate entropy over all channels for every single spatial location ("voxel")
+    fmap_entropy, num_bins = calc_fmap_entropy(feature_map[:,:,z_plane_idx].cpu().numpy().squeeze(), num_bins=15)
+    fmap_entropy = fmap_entropy - fmap_entropy.min()
+    fmap_entropy = fmap_entropy / fmap_entropy.max()
     fmap_entropy[fmap_entropy < 0.05] = 0
 
     ############################################################
