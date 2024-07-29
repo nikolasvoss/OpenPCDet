@@ -152,8 +152,6 @@ def init(args, cfg):
     return output_dir, ckpt_dir, logger, tb_log, dist_train, total_gpus
 
 def main():
-    torch.backends.cudnn.benchmark = True
-
     args, cfg = parse_config()
 
     output_dir, ckpt_dir, logger, tb_log, dist_train, total_gpus = init(args, cfg)
@@ -452,6 +450,7 @@ def train_one_epoch_kd(model, model_teacher, optimizer, train_loader, model_func
             kd_loss = loss_fmap_entr_reln_sparse(visfm.feature_maps[1], visfm.feature_maps[0],
                                                  args.num_bins, top_n_relative=args.top_n_relative,
                                                  kd_act=args.kd_act)
+        # Not used in thesis
         elif args.kd_loss_func == 'entropyRelNDense':
             kd_loss = loss_fmap_entr_reln_dense(visfm.feature_maps[1], visfm.feature_maps[0],
                                                 args.num_bins, top_n_relative=args.top_n_relative,
@@ -667,6 +666,7 @@ def loss_fmap_kd(fmap_student, fmap_teacher, kd_act=None):
     return loss(fmap_student, fmap_teacher)
 
 
+# Not used in thesis
 def loss_fmap_entr_reln_dense(fmap_student, fmap_teacher, num_bins=None, top_n_relative=0.5, kd_act=None):
     """
     Calculates the Mean Squared Error (MSE) loss between the top N values of the student and teacher feature maps.
