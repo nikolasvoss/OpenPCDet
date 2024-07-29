@@ -523,8 +523,8 @@ def calc_fmap_entropy_dense(feature_map, num_bins=None):
     # Expects a feature map tensor of shape [feature_maps, y, x]
     # Abort if the feature map is empty
     if feature_map.max() == 0 and feature_map.min() == 0:
-        # return shape is [y, x]
-        return torch.zeros([feature_map.shape[0], feature_map.shape[2], feature_map.shape[3]], device=feature_map.device), 0
+        # return shape is [batch size, y, x]
+        return torch.zeros([feature_map.shape[0], feature_map.shape[-2], feature_map.shape[-1]], device=feature_map.device), 0
 
     feature_map = feature_map.to(torch.float32)
     # Remove outliers to get usable histogram
