@@ -351,16 +351,6 @@ class VoxelResBackBone8x(nn.Module):
             use_feat_adapt_single = model_cfg.FEAT_ADAPT_SINGLE
         else:
             use_feat_adapt_single = False
-            
-        if model_cfg.get('FEAT_ADAPT_AUTOENCODER', False):
-            use_feat_adapt_autoencoder = model_cfg.FEAT_ADAPT_AUTOENCODER
-        else:
-            use_feat_adapt_autoencoder = False
-
-        if model_cfg.get('FULL_AUTOENCODER', False):
-            use_full_autoencoder = model_cfg.FULL_AUTOENCODER
-        else:
-            use_full_autoencoder = False
 
         if model_cfg.get('TOP_PERCENTAGE', False):
             self.top_percentage = model_cfg.TOP_PERCENTAGE
@@ -437,26 +427,6 @@ class VoxelResBackBone8x(nn.Module):
             self.feat_adapt_single[0].weight.requires_grad = True
             nn.init.zeros_(self.feat_adapt_single[0].bias.data)
             nn.init.kaiming_normal_(self.feat_adapt_single[0].weight.data)
-            
-        if use_feat_adapt_autoencoder is True:
-            # currently only used for teacher to student adaptation
-            self.feat_adapt_autoencoder = spconv.SparseSequential(
-                spconv.SparseConv3d(num_filters[5], 112, 1, stride=1, padding=0),
-                nn.ReLU(),
-                spconv.SparseConv3d(112, 96, 1, stride=1, padding=0),
-                nn.ReLU())
-
-        if use_full_autoencoder is True:
-            # currently used for teacher only training
-            self.full_autoencoder = spconv.SparseSequential(
-                spconv.SparseConv3d(num_filters[5], 112, 1, stride=1, padding=0),
-                nn.ReLU(),
-                spconv.SparseConv3d(112, 96, 1, stride=1, padding=0),
-                nn.ReLU(),
-                spconv.SparseConv3d(96, 112, 1, stride=1, padding=0),
-                nn.ReLU(),
-                spconv.SparseConv3d(112, num_filters[5], 1, stride=1, padding=0),
-                nn.ReLU())
 
         self.final_act = act_fn()
 
@@ -519,15 +489,6 @@ class VoxelResBackBone8x(nn.Module):
         if getattr(self, 'feat_adapt_single', None):
             # self.feat_adapt_single(x_conv_adapt)
             self.feat_adapt_single(self.conv_out[0](x_conv4))
-        if getattr(self, 'feat_adapt_autoencoder', None):
-            self.feat_adapt_autoencoder(self.conv_out[0](x_conv4))
-        if getattr(self, 'full_autoencoder', None):
-            self.full_autoencoder(self.conv_out[0](x_conv4))
-
-        # TODO: commented because clone_sp_tensor need modification of spconv_utils.py
-        # if getattr(self, 'is_teacher', None):
-        #     pre_act_encoded_spconv_tensor = clone_sp_tensor(out, batch_size)
-        # out = replace_feature(out, self.final_act(out.features))
 
         batch_dict.update({
             'encoded_spconv_tensor': out,
@@ -541,13 +502,7 @@ class VoxelResBackBone8x(nn.Module):
                 'x_conv2': x_conv2,
                 'x_conv3': x_conv3,
                 'x_conv4': x_conv4,
-            }
-        })
-        # TODO: Teacher stuff not used yet
-        # if getattr(self, 'is_teacher', None):
-        #     batch_dict.update({
-        #         'encoded_spconv_tensor_pre-act': pre_act_encoded_spconv_tensor
-        #     })
+        }})
 
         return batch_dict
 
