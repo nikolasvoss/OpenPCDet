@@ -674,6 +674,7 @@ def computeHistograms(feature_map, bin_edges, num_bins):
 
 def computeHistogramsTorch(feature_map, bin_edges, num_bins):
     # find all values that are in the bins bin_edges[n] <= x < bin_edges[n+1] and count them.
+    # expects: feature_map of shape [batch, channels, y, x]
     batch, h, w = feature_map.shape[0], feature_map.shape[-2], feature_map.shape[-1]
     histograms = torch.zeros((batch, num_bins, h, w), dtype=torch.int32, device=feature_map.device)
     for bat in range(feature_map.shape[0]):
