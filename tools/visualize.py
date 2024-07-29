@@ -62,28 +62,6 @@ def parse_config(second_s=False):
 
     return args, cfg
 
-def getTopNVoxels(input_dict, N):
-    """This can be used to filter voxels based on the importance score
-    like in PointDistiller
-    Inputs:
-        input_dict: dict containing the voxel data
-        N: number of top voxels to keep
-    Outputs:
-        voxels: top N voxels
-        voxel_coords: top N voxel coordinates
-        importance_score: top N importance scores
-        """
-    importance_score = input_dict['voxel_num_points']
-    # find N indices with the highest value and save them to importance_score.
-    importance_idx = np.argpartition(importance_score, -N)[-N:]
-    importance_score = importance_score[importance_idx]
-    # top N voxels
-    voxels = input_dict['voxels'][importance_idx, :, :]
-    voxel_coords = input_dict['voxel_coords'][importance_idx, :]
-    return voxels, voxel_coords, importance_score
-
-
-
 
 def main():
     second_s = False
@@ -141,16 +119,12 @@ def main():
 
     # layer names can be printed with
     visfm.printAllModelLayers(model)
-    # layer_name = "backbone_3d.conv1.1.conv1"  # Replace with the layer you want to visualize
     # layer_name = "backbone_3d.conv3.1.conv1"
-    # layer_name = "backbone_3d.conv_out.0"
-    # layer_name = "backbone_2d.blocks.0.7"
-    layer_name = "dense_head.shared_conv.2"
+    layer_name = "backbone_3d.conv_out.0"
     samples_idx = [190]  # Index of sample to visualize
     batch_idx = 0
-    # fmap_idx = list(range(6, 30)) # Index of the feature map to visualize
-    fmap_idx = 8
-    z_plane_idx = 25  # Index of the z-plane to visualize from the 3D feature map. Only used in 2d vis
+    fmap_idx = [5,6,7]
+    z_plane_idx = 0  # Index of the z-plane to visualize from the 3D feature map. Only used in 2d vis
     if second_s:
         output_dir = f'/home/niko/OpenPCDet/feature_map_saves/second_S/{layer_name}/'
     else:
@@ -170,27 +144,21 @@ def main():
         with torch.no_grad():
             # Forward pass through the model
             load_data_to_gpu(input_dict)
-
             pred_dicts, ret_dict = model.forward(input_dict)
 
         # Visualize the feature map
-        # visfm.vis_fmap_2d(visfm.feature_maps[0], output_dir, batch_idx, fmap_idx, z_plane_idx, no_negative_values=True)
-        visfm.vis_fmap_3d(visfm.feature_maps[0], output_dir, batch_idx, fmap_idx, input_dict['points'],
-                                     same_plot=True,
-                                     gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
-                                     pred_boxes=pred_dicts[0]['pred_boxes'])
-        # visfm.vis_fmap_entropy_3d(feature_map=visfm.feature_maps[0],
-        #                            samples_idx=i,
-        #                            input_points=input_dict['points'],
-        #                            #output_dir=output_dir,
-        #                            gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
-        #                            pred_boxes=pred_dicts[0]['pred_boxes'])
-        # visfm.visualizeFmapEntropyVsSparseVals(feature_map=visfm.feature_maps[0],
-        #                                        samples_idx=i,
-        #                                       input_points=input_dict['points'],
-        #                                       #output_dir=output_dir,
-        #                                       gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
-        #                                       pred_boxes=pred_dicts[0]['pred_boxes'])
+        # visfm.vis_fmap_2d(visfm.feature_maps[0], output_dir, batch_idx, fmap_idx, z_plane_idx, no_negative_values=True,
+        #                   layer_name=layer_name, visibility_factor=4)
+        # visfm.vis_fmap_3d(visfm.feature_maps[0], output_dir, i, batch_idx, fmap_idx, input_dict['points'],
+        #                              same_plot=True,
+        #                              gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
+        #                              pred_boxes=pred_dicts[0]['pred_boxes'])
+        visfm.vis_fmap_entropy_3d(feature_map=visfm.feature_maps[0],
+                                   samples_idx=i,
+                                   input_points=input_dict['points'],
+                                   output_dir=output_dir,
+                                   gt_boxes=input_dict['gt_boxes'][0, :, 0:9], # unknown last [10] value
+                                   pred_boxes=pred_dicts[0]['pred_boxes'])
 
 if __name__ == '__main__':
     main()
