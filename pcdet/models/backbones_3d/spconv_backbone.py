@@ -464,7 +464,7 @@ class VoxelResBackBone8x(nn.Module):
         x_conv4 = self.conv4(x_conv3)
         out = self.conv_out(x_conv4)
 
-        # Add for data filtering (random or entropy)
+        # Add for data filtering (random or entropy). Use either rand_indices or topn_indices as input for out (or other desired tensor)
         # if getattr(self, 'top_percentage', None) or self.top_percentage < 1.0:
         #     # rand_indices = torch.randperm(out_bkup.features.shape[0])
         #     # rand_indices = rand_indices[:int(out_bkup.features.shape[0] * self.top_percentage)]
