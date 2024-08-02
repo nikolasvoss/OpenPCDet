@@ -28,16 +28,17 @@ Entropy calculation is also located in [vis_feature_maps.py](tools/visual_utils/
 
 ## Filtering
 Filtering was done inside the forward pass of the sparse backbone ('backbone_3d') in [spconv_backbone](pcdet/models/backbones_3d/spconv_backbone.py) inside the class 'VoxelResBackBone8x'.
-It uses the parameter 'TOP_PERCENTAGE' from the model [config file](tools/cfgs/nuscenes_models/cbgs_second_S_w_teacher_multihead.yaml) to set the filtered amount.
+It uses the parameter `TOP_PERCENTAGE` from the model [config file](tools/cfgs/nuscenes_models/cbgs_second_S_w_teacher_multihead.yaml) to set the filtered amount and was evaluated with [test.py](tools/test.py).
+[test.py](tools/test.py) also includes a commented section at the bottom, that calls the eval routine repeatedly with different top% values. 
 
 ## Knowledge Distillation
 KD is also done using the config file [cbgs_second_S_w_teacher_multihead.yaml](tools/cfgs/nuscenes_models/cbgs_second_S_w_teacher_multihead.yaml).
-It includes the config for the student ('MODEL') and for the teacher ('MODEL_TEACHER').
-The training is done using [train_kd.py](tools/train_kd.py) where the either FitNET KD (here: full feature map kd) 'fullFmap' or sparse entropy-kd 'entrRelN' arguments for '--kd_loss_func' can be used for distillation.
-Distillation of the dense backbone ('backbone_2d') is also possible with 'entrRelNDense' but it wasn't used in the thesis.
-Several other parameters of the distillation can be configured via the arguments like '--kd_loss_weight', '--kd_act', '--num-bins', '--topn_relative', '--layer0_name_teacher', '--layer0_name_student'.
-When distillation is used, the feature adaptation layer must be activated in the student model config with 'FEAT_ADAPT_SINGLE = True' to match the feature map dimensions of teacher and student.
-The config paramter 'KD_CHANNEL_WIDTH' is used to automatically calculate the channel width of the adapt layer.
+It includes the config for the student (`MODEL`) and for the teacher (`MODEL_TEACHER`).
+The training is done using [train_kd.py](tools/train_kd.py) where the either FitNET KD (here: full feature map kd) `fullFmap` or sparse entropy-kd `entrRelN` arguments for `--kd_loss_func` can be used for distillation.
+Distillation of the dense backbone (`backbone_2d`) is also possible with `entrRelNDense` but it wasn't used in the thesis.
+Several other parameters of the distillation can be configured via the arguments like `--kd_loss_weight`, `--kd_act`, `--num-bins`, `--topn_relative`, `--layer0_name_teacher`, `--layer0_name_student`.
+When distillation is used, the feature adaptation layer must be activated in the student model config with `FEAT_ADAPT_SINGLE = True` to match the feature map dimensions of teacher and student.
+The config paramter `KD_CHANNEL_WIDTH` is used to automatically calculate the channel width of the adapt layer.
 
 
 <img src="docs/open_mmlab.png" align="right" width="30%">
