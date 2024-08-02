@@ -1,3 +1,45 @@
+# Master's thesis: Better Students with Less Data - Knowledge Distillation of Sparse 3D-Object Detectors with Efficient Feature Analysis 
+This repository is a fork of the original OpenPCDet library, which implements a entropy-based feature selection technique to use it for sparse data filtering and knowledge distillation.
+The SECOND architecture was used to train teacher and student models on the nuscenes dataset.  
+The work was done during a master's thesis at the University of Applied Sciences Munich.
+
+## Abstract
+This thesis presents a method for efficient knowledge distillation for 3D object recognition from lidar da-
+ta. It is based on computing the entropy of voxelized point clouds to identify relevant regions in sparse
+feature maps. These regions were then used to develop a knowledge distillation method that focuses
+a SECOND student network on the relevant regions.
+In training with the NuScenes dataset, it was shown that entropy distillation with only a subset of the
+feature maps provides a better focus for training the student network and outperforms distillation of full
+feature maps. At the same time, only minor additional cost and complexity were added to the model,
+making the method particularly efficient.
+The work thus provides an approach to optimize existing networks for 3D object recognition as used in
+autonomous vehicles or mobile robots. The approach also shows that existing problems such as spar-
+sity and redundancy of the point cloud can be exploited to further increase the efficiency of networks.
+
+The main points include:
+- Feature map and entropy-map visualization.
+- Random and entropy-based filtering of sparse data in the forward pass.
+- Offline Feature Distillation using full feature maps vs. entropy selected features 
+
+# Code
+## Visualization
+[visualize.py](tools/visualize.py) includes [vis_feature_maps.py](tools/visual_utils/vis_feature_maps.py) and calls different functions for 2D, 3D and entropy-map visualization.
+Entropy calculation is also located in [vis_feature_maps.py](tools/visual_utils/vis_feature_maps.py).
+
+## Filtering
+Filtering was done inside the forward pass of the sparse backbone ('backbone_3d') in [spconv_backbone](pcdet/models/backbones_3d/spconv_backbone.py) inside the class 'VoxelResBackBone8x'.
+It uses the parameter 'TOP_PERCENTAGE' from the model [config file](tools/cfgs/nuscenes_models/cbgs_second_S_w_teacher_multihead.yaml) to set the filtered amount.
+
+## Knowledge Distillation
+KD is also done using the config file [cbgs_second_S_w_teacher_multihead.yaml](tools/cfgs/nuscenes_models/cbgs_second_S_w_teacher_multihead.yaml).
+It includes the config for the student ('MODEL') and for the teacher ('MODEL_TEACHER').
+The training is done using [train_kd.py](tools/train_kd.py) where the either FitNET KD (here: full feature map kd) 'fullFmap' or sparse entropy-kd 'entrRelN' arguments for '--kd_loss_func' can be used for distillation.
+Distillation of the dense backbone ('backbone_2d') is also possible with 'entrRelNDense' but it wasn't used in the thesis.
+Several other parameters of the distillation can be configured via the arguments like '--kd_loss_weight', '--kd_act', '--num-bins', '--topn_relative', '--layer0_name_teacher', '--layer0_name_student'.
+When distillation is used, the feature adaptation layer must be activated in the student model config with 'FEAT_ADAPT_SINGLE = True' to match the feature map dimensions of teacher and student.
+The config paramter 'KD_CHANNEL_WIDTH' is used to automatically calculate the channel width of the adapt layer.
+
+
 <img src="docs/open_mmlab.png" align="right" width="30%">
 
 # OpenPCDet
